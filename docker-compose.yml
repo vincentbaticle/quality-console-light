@@ -42,6 +42,10 @@ services:
 
   rabbitmq:
     image: rabbitmq:3.13-management
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     ports:
       - "5672:5672"
       - "15672:15672"
