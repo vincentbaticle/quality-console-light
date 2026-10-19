@@ -1,0 +1,24 @@
+---
+default:
+  interruptible: true
+
+variables:
+  PDM_VERSION: "2.29.1"
+  PYTHON_VERSION: "3.14"
+  PRE_COMMIT_HOME: "$CI_PROJECT_DIR/.cache/pre-commit"
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+include:
+  - local: 'gitlab-ci/*.yml'
+
+stages:
+  - check
+  - tests
+  - quality
+  - results

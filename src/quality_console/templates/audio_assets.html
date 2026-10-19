@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Audio asset generator - Quality Console{% endblock %}
+{% block content %}
+<style>
+  .audio-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px 16px; }
+  .audio-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--fg-secondary); }
+  .audio-form input, .audio-form select { padding: 7px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--fg); font: 14px var(--font); }
+  .audio-form input:focus, .audio-form select:focus { outline: 2px solid var(--brand-soft); border-color: var(--brand); }
+  .audio-form small { font-weight: 500; color: var(--fg-muted); }
+  .audio-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 16px; }
+  .audio-actions .weight { font-size: 13px; color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
+  .audio-actions .weight.over { color: var(--negative); font-weight: 600; }
+  .audio-problems { margin: 12px 0 0; padding-left: 18px; color: var(--negative); font-size: 13px; }
+  .audio-done { margin: 12px 0 0; color: var(--positive); font-size: 13px; }
+  .audio-list audio { height: 32px; width: 180px; }
+  .audio-list td.mono { word-break: break-all; min-width: 220px; }
+  .audio-list td { vertical-align: middle; }
+  .audio-list td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .audio-list .row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .audio-list tr.fresh td { background: var(--positive-bg); }
+</style>
+<nav class="crumbs"><a href="/utility">Utility tools</a> / Audio asset generator</nav>
+<div class="page-head">
+  <div>
+    <h1>Audio asset generator <span class="badge live" title="Writes files into audio-assets/ of the repository.">live</span></h1>
+    <p class="subtitle">Placeholder tracks for test data, written on your disk: pick a duration, a format and the rest, then <strong>Generate</strong>.</p>
+  </div>
+</div>
+<div class="info">
+  <p><strong>Generate</strong> writes the tracks into <code>audio-assets/</code> at the root of the repository, on your disk: the folder is committed, the files never are (<code>.gitignore</code>). Each track is random noise under a slow modulation plus a frequency sweep, different on every file, held just below full scale so nothing clips.</p>
+  <p>The form keeps the rules a distribution platform applies: 16-bit is disc rate only (44100 Hz), 24 and 32-bit take 48, 96 or 192 kHz, FLAC has no 32-bit encoding, and one request weighs {{ max_mb }} MB at most before encoding. <strong>▶</strong> plays a track here, <strong>Download</strong> saves it, <strong>Delete</strong> removes it from the folder.</p>
+</div>
+<section class="card">
+  <div class="section-head"><h2>New tracks</h2><span class="hint">The choices the format or the bit depth rules out are greyed.</span></div>
+  <form id="audio-form" class="audio-form" novalidate>
+    <label>Duration (seconds)
+      <input type="number" name="duration_seconds" min="1" max="{{ max_duration }}" value="{{ defaults.duration_seconds }}" required>
+      <small>1 to {{ max_duration }}</small>
+    </label>
+    <label>Format
+      <select name="file_format">
+        {% for name in formats %}<option value="{{ name }}" {% if name == defaults.file_format %}selected{% endif %}>{{ name | upper }}</option>{% endfor %}
+      </select>
+      <small>WAV uncompressed, FLAC lossless</small>
+    </label>
+    <label>Bit depth
+      <select name="bit_depth">
+        {% for depth in sample_rates %}<option value="{{ depth }}" {% if depth == defaults.bit_depth %}selected{% endif %}>{{ depth }}-bit</option>{% endfor %}
+      </select>
+      <small>32-bit: WAV only</small>
+    </label>
+    <label>Sample rate
+      <select name="sample_rate">
+        {% for rate in all_rates %}<option value="{{ rate }}" {% if rate == defaults.sample_rate %}selected{% endif %}>{{ rate }} Hz</option>{% endfor %}
+      </select>
+      <small>16-bit: 44100 Hz only</small>
+    </label>
+    <label>Channels
+      <select name="channels">
+        {% for name, count in channels.items() %}<option value="{{ name }}" {% if name == defaults.channels %}selected{% endif %}>{{ name }} ({{ count }})</option>{% endfor %}
+      </select>
+      <small>5.1 is six channels</small>
+    </label>
+    <label>Number of files
+      <input type="number" name="files" min="1" max="{{ max_files }}" value="{{ defaults.files }}" required>
+      <small>1 to {{ max_files }}</small>
+    </label>
+    <label>File name prefix
+      <input type="text" name="prefix" maxlength="40" pattern="[A-Za-z0-9-]+" value="{{ defaults.prefix }}" required>
+      <small>Letters, digits, dashes</small>
+    </label>
+  </form>
+  <div class="audio-actions">
+    <button type="submit" form="audio-form" class="button">Generate</button>
+    <span class="weight" id="weight"></span>
+  </div>
+  <ul class="audio-problems" id="problems" hidden></ul>
+  <p class="audio-done" id="done" hidden></p>
+</section>
+<section class="card">
+  <div class="section-head"><h2>In audio-assets/</h2><span class="hint">{{ assets | length }} file{{ "" if assets | length == 1 else "s" }}, newest first.</span></div>
+  {% if assets %}
+  <div class="table-wrap audio-list">
+    <table>
+      <thead><tr><th>File</th><th>Duration</th><th>Rate</th><th>Channels</th><th>Encoding</th><th>Size</th><th>Listen</th><th></th></tr></thead>
+      <tbody>
+        {% for asset in assets %}
+        <tr data-name="{{ asset.name }}">
+          <td class="mono">{{ asset.name }}</td>
+          <td class="num">{{ "%.1f" | format(asset.duration_seconds) }} s</td>
+          <td class="num">{{ asset.sample_rate }} Hz</td>
+          <td class="num">{{ asset.channels }}</td>
+          <td>{{ asset.subtype }}</td>
+          <td class="num">{{ "%.2f" | format(asset.size_bytes / 1048576) }} MB</td>
+          <td><audio controls preload="none" src="/utility/audio-assets/files/{{ asset.name | urlencode }}?inline=true"></audio></td>
+          <td><div class="row-actions"><a class="button small ghost" href="/utility/audio-assets/files/{{ asset.name | urlencode }}" download>Download</a><button type="button" class="button small ghost" data-delete="{{ asset.name }}">Delete</button></div></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty" style="min-height:160px"><div><div class="big">🎵</div><p>No track yet: fill the form, then <strong>Generate</strong>.</p></div></div>
+  {% endif %}
+</section>
+<script>
+  (() => {
+    const FORMATS = {{ formats | tojson }};
+    const RATES = {{ sample_rates | tojson }};
+    const CHANNELS = {{ channels | tojson }};
+    const MAX_MB = {{ max_mb }};
+    const form = document.getElementById("audio-form");
+    const field = (name) => form.elements[name];
+    const LOADER_MIN_MS = 1000;
+    const loader = (on) => {
+      document.getElementById("loader-text").textContent = "Generating the tracks";
+      document.getElementById("loader").classList.toggle("on", on);
+    };
+
+    function allow(select, allowed) {
+      [...select.options].forEach((option) => { option.disabled = !allowed.includes(option.value); });
+      if (select.selectedOptions[0]?.disabled) select.value = allowed[0];
+    }
+
+    function body() {
+      return {
+        duration_seconds: Number(field("duration_seconds").value),
+        file_format: field("file_format").value,
+        bit_depth: Number(field("bit_depth").value),
+        sample_rate: Number(field("sample_rate").value),
+        channels: field("channels").value,
+        files: Number(field("files").value),
+        prefix: field("prefix").value.trim(),
+      };
+    }
+
+    function refresh() {
+      allow(field("bit_depth"), FORMATS[field("file_format").value].map(String));
+      allow(field("sample_rate"), RATES[field("bit_depth").value].map(String));
+      const b = body();
+      const mb = (b.duration_seconds * b.sample_rate * b.bit_depth / 8 * (CHANNELS[b.channels] ?? 1) * b.files) / 1048576;
+      const weight = document.getElementById("weight");
+      weight.textContent = `About ${mb < 1 ? mb.toFixed(2) : mb.toFixed(1)} MB before encoding, ${MAX_MB} MB at most.`;
+      weight.classList.toggle("over", mb > MAX_MB);
+    }
+
+    function say(problems, done) {
+      const list = document.getElementById("problems");
+      list.replaceChildren(...problems.map((p) => Object.assign(document.createElement("li"), { textContent: p })));
+      list.hidden = problems.length === 0;
+      const ok = document.getElementById("done");
+      ok.textContent = done ?? "";
+      ok.hidden = !done;
+    }
+
+    form.addEventListener("input", refresh);
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      say([]);
+      loader(true);
+      const shown = new Promise((resolve) => setTimeout(resolve, LOADER_MIN_MS));
+      try {
+        const [response] = await Promise.all([fetch("/utility/audio-assets/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body()) }), shown]);
+        const answer = await response.json();
+        if (!response.ok) {
+          const detail = Array.isArray(answer.detail) ? answer.detail.map((d) => (typeof d === "string" ? d : `${d.loc.at(-1)}: ${d.msg}`)) : [String(answer.detail)];
+          loader(false);
+          say(detail);
+          return;
+        }
+        try { sessionStorage.setItem("audio-fresh", JSON.stringify(answer.files)); } catch (error) { console.warn("Fresh tracks not kept", error); }
+        location.reload();
+      } catch (error) {
+        loader(false);
+        say([`The console did not answer: ${error.message}`]);
+      }
+    });
+
+    document.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", async () => {
+      const name = button.dataset.delete;
+      if (!confirm(`Delete ${name} from audio-assets/?`)) return;
+      const response = await fetch(`/utility/audio-assets/files/${encodeURIComponent(name)}`, { method: "DELETE" });
+      if (response.ok || response.status === 404) location.reload();
+    }));
+
+    let fresh = [];
+    try { fresh = JSON.parse(sessionStorage.getItem("audio-fresh") ?? "[]"); sessionStorage.removeItem("audio-fresh"); } catch { fresh = []; }
+    if (fresh.length) {
+      say([], `${fresh.length} track${fresh.length > 1 ? "s" : ""} written into audio-assets/, highlighted below.`);
+      document.querySelectorAll("tr[data-name]").forEach((row) => row.classList.toggle("fresh", fresh.includes(row.dataset.name)));
+    }
+    refresh();
+  })();
+</script>
+{% endblock %}

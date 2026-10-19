@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}API docs - Quality Console{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/tools">Tools</a> / API docs</nav>
+<div class="page-head">
+  <div>
+    <h1>API docs</h1>
+    <p class="subtitle">Every API of the catalog. HTTP contracts open in Swagger UI; the event contract of the order workflow (AsyncAPI) opens as its own page.</p>
+  </div>
+</div>
+<style>
+  .grid-cards a.mock-link { flex-direction: row; align-items: center; gap: 6px; margin-top: 6px; padding: 6px 10px; font-size: 12px; border-style: dashed; }
+</style>
+<div class="info"><p>Every API of the catalog. An HTTP API opens in Swagger UI on its contract; the order workflow events open on a page of their own, Swagger UI not reading AsyncAPI. The Bank Partner is one of them: its contract lives in <code>contracts/</code> like the others.</p><p><strong>mock</strong> opens the contract mock of an OpenAPI contract: Prism serves every file of <code>contracts/</code> from its schemas and examples, checks each request against the contract (a missing parameter answers 422, a missing key 401), and needs nothing written beside the contract. {% if mocks_url %}All of them listed at <a href="{{ mocks_url }}/" target="_blank" rel="noopener">{{ mocks_url }}</a>.{% else %}They run with <code>mise run up</code>.{% endif %} The captured Bank Partner examples stay in Microcks, which picks the answer by request: the tests use Microcks, see <a href="/tools/recordings">Recorded examples</a>.</p></div>
+<section class="card">
+  <ul class="grid-cards">
+    {% for api in apis %}
+    <li>
+      {% if api.target %}<a href="/tools/apis/{{ api.name }}">{% else %}<a title="No contract file in contracts/: FastAPI serves it live">{% endif %}
+        <span class="icon">{% if api.type == "asyncapi" %}📨{% else %}📘{% endif %}</span>
+        <strong>{{ api.title }}</strong>
+        <small><span class="badge type">{{ api.type }}</span> {{ api.owner }}</small>
+        <p>{{ api.description }}</p>
+        {% if not api.target %}<small>Served live by the service at <code>/docs</code></small>{% endif %}
+      </a>
+      {% if mocks.get(api.name) %}<a class="mock-link" href="{{ mocks[api.name] }}" target="_blank" rel="noopener" title="Prism serves this contract as a mock">🎭 mock <span class="mono">{{ mocks[api.name] }}</span></a>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

@@ -1,0 +1,48 @@
+title: Bucket checks, the contract of a team bucket
+product: bucket-checks
+purpose: >-
+  The same generic checks run on every team bucket, each bucket being one row
+  of examples (finance-exports, catalog-feeds). The design shows the path of a
+  healthy bucket, and in red every way a bucket can break that no example
+  proves yet: a broken file deserves a bucket of its own in the examples, so
+  the test shows it is caught.
+nodes:
+  - {id: bucket, label: "A team bucket one row of examples", kind: start}
+  - {id: listed, label: "Files under the prefix?", kind: check}
+  - {id: names, label: "Names match the pattern?", kind: check}
+  - {id: sizes, label: "No empty file?", kind: check}
+  - {id: format, label: "Every file reads as its format?", kind: check}
+  - {id: fresh, label: "Newest file fresh enough?", kind: check}
+  - {id: kept, label: "Contract kept", kind: outcome}
+  - {id: manifest, label: "Manifest lists exactly the files?", kind: check}
+  - {id: in_sync, label: "Manifest in sync", kind: outcome}
+  - {id: schema, label: "Columns and fields as agreed?", kind: check}
+  - {id: no_file, label: "Nothing delivered", kind: failure}
+  - {id: bad_name, label: "Misnamed file", kind: failure}
+  - {id: empty, label: "Empty file", kind: failure}
+  - {id: unreadable, label: "Unreadable file", kind: failure}
+  - {id: stale, label: "Stale delivery", kind: failure}
+  - {id: drift, label: "Missing or unlisted file", kind: failure}
+edges:
+  - {from: bucket, to: listed, label: list the prefix}
+  - {from: listed, to: no_file, label: "no"}
+  - {from: listed, to: names, label: "yes"}
+  - {from: names, to: bad_name, label: "no"}
+  - {from: names, to: sizes, label: "yes"}
+  - {from: sizes, to: empty, label: "no"}
+  - {from: sizes, to: format, label: "yes"}
+  - {from: format, to: unreadable, label: "no"}
+  - {from: format, to: fresh, label: "yes"}
+  - {from: format, to: schema, label: read the content}
+  - {from: fresh, to: stale, label: "no"}
+  - {from: fresh, to: kept, label: "yes"}
+  - {from: listed, to: manifest, label: read manifest.json}
+  - {from: manifest, to: in_sync, label: "yes"}
+  - {from: manifest, to: drift, label: "no"}
+scenarios:
+  - scenario: The files of a bucket follow its contract
+    feature: bucket-checks/file-contracts.feature
+    path: [bucket, listed, names, sizes, format, fresh, kept]
+  - scenario: The manifest of a bucket lists exactly its files
+    feature: bucket-checks/file-contracts.feature
+    path: [bucket, listed, manifest, in_sync]

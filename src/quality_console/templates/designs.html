@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Scenario design - Quality Console{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/tools">Tools</a> / Scenario design</nav>
+<div class="page-head">
+  <div>
+    <h1>Scenario design</h1>
+    <p class="subtitle">Each journey drawn as a graph, and the path every Gherkin scenario walks on it. Kept as code in <code>designs/</code>, beside <code>features/</code>.</p>
+  </div>
+</div>
+<div class="info">
+  <p>A test design maps every state a user, an order or a file can go through, and the transitions between them, before or beside the scenarios. Each scenario is then a path on the map. <strong>Plain grey</strong> transitions are walked by at least one scenario, <strong>dashed red</strong> ones by none: the gaps to discuss with the product owner. Clicking a scenario highlights its path in blue; <strong>Run</strong> runs it on the stack through the Gherkin runner.</p>
+  <p>Shapes: blue stadium, where a journey starts; hexagon, a check; white box, a state; green, a good outcome; red, a refusal or a failure.</p>
+</div>
+{% if selected %}
+<div class="split">
+  <aside class="sidebar">
+    <ul class="side-list">
+      {% for d in designs %}
+      <li><a href="/tools/designs?design={{ d.key }}" class="{% if d.key == selected.key %}selected{% endif %}"><strong>{{ d.title }}</strong><small>{{ d.paths | length }} scenarios · {{ d.edges | length - d.gaps | length }}/{{ d.edges | length }} transitions covered</small></a></li>
+      {% endfor %}
+    </ul>
+    <section class="card" style="margin:0">
+      <h2>Scenarios of this design</h2>
+      <ul class="side-list">
+        {% for path in selected.paths %}
+        <li style="display:flex;gap:6px;align-items:center">
+          <a style="flex:1" href="/tools/designs?design={{ selected.key }}&scenario={{ path.name | urlencode }}" class="{% if path.name == scenario %}selected{% endif %}"><strong>{{ path.name }}</strong><small>{{ path.nodes | length }} steps · {{ path.feature }}</small></a>
+          <form method="post" action="/tools/gherkin/run?feature={{ path.feature | urlencode }}&scenario={{ path.name | urlencode }}" data-loading="Running the scenario on the stack"><button type="submit" class="button ghost small" aria-label="Run {{ path.name }}">▶ Run</button></form>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+  </aside>
+  <div>
+    <section class="card">
+      <h3>{{ selected.title }}</h3>
+      <p class="secondary">{{ selected.purpose }}</p>
+      <div class="tiles" style="margin:12px 0">
+        <div class="tile"><div class="label">States and checks</div><div class="value">{{ selected.nodes | length }}</div></div>
+        <div class="tile"><div class="label">Transitions</div><div class="value">{{ selected.edges | length }}</div></div>
+        <div class="tile positive"><div class="label">Walked by a scenario</div><div class="value">{{ selected.edges | length - selected.gaps | length }}</div></div>
+        <div class="tile negative"><div class="label">Gaps</div><div class="value">{{ selected.gaps | length }}</div></div>
+      </div>
+      {% if problems %}<pre class="message">{{ problems | join("\n") }}</pre>{% endif %}
+      <div class="mermaid-wrap"><pre class="mermaid">{{ diagram }}</pre></div>
+    </section>
+    <section class="card">
+      <h2>Gaps: transitions no scenario walks</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>From</th><th>Transition</th><th>To</th></tr></thead>
+        <tbody>
+          {% set labels = {} %}{% for n in selected.nodes %}{% set _ = labels.update({n.id: n.label}) %}{% endfor %}
+          {% for e in selected.gaps %}<tr><td>{{ labels[e.source] }}</td><td class="mono">{{ e.label }}</td><td>{{ labels[e.target] }}</td></tr>{% else %}<tr><td colspan="3" class="muted">Every transition has a scenario.</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+    </section>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js" crossorigin="anonymous"></script>
+<script>mermaid.initialize({ startOnLoad: true, theme: "base", flowchart: { curve: "basis", htmlLabels: true, useMaxWidth: false }, themeVariables: { fontSize: "13px" } });</script>
+{% else %}
+<section class="card empty"><div><div class="big">🧭</div><p>No design in <code>designs/</code> yet.</p></div></section>
+{% endif %}
+{% endblock %}

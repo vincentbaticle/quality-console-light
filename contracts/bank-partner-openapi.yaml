@@ -1,0 +1,62 @@
+openapi: 3.0.3
+info:
+  title: Bank Partner
+  description: Copy of the contract the Bank Partner publishes. Primary Microcks artifact, the examples live in bank-partner-examples.yaml.
+  version: 1.0.0
+security:
+  - ApiKey: []
+paths:
+  /balance:
+    get:
+      operationId: getBalance
+      parameters:
+        - name: username
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The balance of the account held for that username.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Balance'
+        '401':
+          description: The key is missing or not one the bank issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+        '404':
+          description: The bank holds no account for that username.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: Long-lived key the bank issues once to each client, rotated by the bank.
+  schemas:
+    Balance:
+      type: object
+      required: [username, balance_cents, currency]
+      properties:
+        username:
+          type: string
+        balance_cents:
+          type: integer
+          description: Amount in cents, never a float.
+        currency:
+          type: string
+          description: ISO 4217 currency code.
+    NotFound:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string

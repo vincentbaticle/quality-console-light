@@ -1,0 +1,15 @@
+.venv/
+.pdm-python
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.*.xml
+test-results/
+capture/*
+!capture/.gitkeep
+reports/
+site/
+audio-assets/*
+!audio-assets/.gitkeep

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Gherkin scenarios - Quality Console{% endblock %}
+{% macro step_list(steps) -%}
+<ul class="steps">
+  {% for step in steps %}
+  <li><b>{{ step.keyword }}</b> {{ step.text }}{% if step.table %}<table>{% for row in step.table %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</table>{% endif %}</li>
+  {% endfor %}
+</ul>
+{%- endmacro %}
+{% block content %}
+<nav class="crumbs"><a href="/tools">Tools</a> / Gherkin scenarios</nav>
+<div class="page-head">
+  <div>
+    <h1>Gherkin scenarios</h1>
+    <p class="subtitle">The acceptance scenarios of <code>features/</code>, one section per product. <strong>Run</strong> runs a whole feature or one scenario against the stack <code>mise run up</code> started; the run also lands in <a href="/test-results?artifact_type=acceptance">Test results</a>.</p>
+  </div>
+</div>
+<div class="info"><p>The <strong>Driven by</strong> filter keeps the features of one tool. <strong>Run feature</strong> runs every scenario of a feature, <strong>Run</strong> one scenario. The Gherkin runner starts pytest-bdd against the running stack, the verdict shows above with the pytest output, and the run is filed in Test results like a CI job. The stack down, the scenarios skip and say how to start it.</p><p><span class="badge live">live</span> products write for real when their scenarios run (Redis visits, orders, accounts, emails); <span class="badge static">static</span> ones only read.</p><p>Each feature says what drives its scenarios, a badge beside its name from its <code>@tool-</code> tag: <span class="badge tool">pytest</span> (pytest-bdd steps calling the stack over HTTP or the bucket), <span class="badge tool">playwright</span> (steps clicking the storefront page in a real Chromium, written from a recorded journey), <span class="badge tool">schemathesis</span> (requests generated from a contract), <span class="badge tool">k6</span> (a load played by k6, its summary read by the steps). Every one still runs through pytest-bdd, so the console runs and files them alike.</p></div>
+<nav class="filters" aria-label="Driven by" style="margin-bottom:16px"><span class="secondary">Driven by</span>
+  <span class="segmented">
+    <a href="/tools/gherkin" class="{% if not tool %}active{% endif %}" {% if not tool %}aria-current="page"{% endif %}>All ({{ total }})</a>
+    {% for name, count in tools %}<a href="/tools/gherkin?tool={{ name | urlencode }}" class="{% if name == tool %}active{% endif %}" {% if name == tool %}aria-current="page"{% endif %}>{{ name }} ({{ count }})</a>{% endfor %}
+  </span>
+</nav>
+{% if result %}
+<output class="banner {{ result.status }}">
+  <strong>{{ result.status | upper }}</strong> · {{ result.feature }}{% if result.scenario %} · {{ result.scenario }}{% endif %}
+  {% if result.total is defined %} · {{ result.passed }} passed, {{ result.failed }} failed, {{ result.skipped }} skipped{% endif %}
+  {% if result.run_id %} · <a href="/test-results?date_range=all&run={{ result.run_id | urlencode }}">open the run</a>{% endif %}
+  <details {% if result.status != "passed" %}open{% endif %}><summary>Output</summary><pre>{{ result.output }}</pre></details>
+</output>
+{% endif %}
+{% for section in sections %}
+<section class="card" id="{{ section.name }}">
+  <div class="section-head">
+    <div>
+      {% set kind = feature_kind(section.name) %}
+      <h3>{{ section.title }} <span class="badge {{ kind }}" title="{% if kind == 'live' %}Its scenarios write for real: visits, orders, accounts, emails.{% else %}Its scenarios only read.{% endif %}">{{ kind }}</span></h3>
+      <p>{{ section.purpose }}</p>
+      {% if live.get(section.name) %}<p><a class="try-live" href="{{ live[section.name] }}">🛍️ Try it by hand in Live experimentation</a>: the same product the scenarios below prove, opened alone on the storefront.</p>{% endif %}
+    </div>
+    <span class="hint">{{ section.features | length }} feature(s), {{ section.features | map(attribute="scenarios") | map("length") | sum }} scenario(s)</span>
+  </div>
+  {% for feature in section.features %}
+  <div class="feature">
+    <div class="feature-head">
+      <div>
+        <strong>Feature: {{ feature.name }}</strong> {% for driver in feature.tools %}<span class="badge tool" title="The scenarios of this feature are driven by {{ driver }}">{{ driver }}</span> {% endfor %}<span class="mono muted">{{ feature.path }}</span>
+        <p>{{ feature.description }}</p>
+      </div>
+      <form method="post" action="/tools/gherkin/run?feature={{ feature.path | urlencode }}{% if tool %}&tool={{ tool | urlencode }}{% endif %}" class="inline" data-loading="Running the feature on the stack"><button type="submit" class="button small" aria-label="Run the feature {{ feature.name }}">▶ Run feature</button></form>
+    </div>
+    {% if feature.background %}<p class="hint" style="margin:10px 0 0">Background</p>{{ step_list(feature.background) }}{% endif %}
+    {% for scenario in feature.scenarios %}
+    <div class="scenario">
+      <div>
+        <strong>{{ scenario.name }}</strong>
+        {% if scenario.goal %}<p class="goal"><b>Goal</b> {{ scenario.goal }}</p>{% endif %}
+        {{ step_list(scenario.steps) }}
+        {% if scenario.examples %}
+        <p class="hint" style="margin:8px 0 4px">Examples, one run per row</p>
+        <div class="table-wrap" style="display:inline-block"><table>
+          <thead><tr>{% for cell in scenario.examples[0] %}<th>{{ cell }}</th>{% endfor %}</tr></thead>
+          <tbody>{% for row in scenario.examples[1:] %}<tr>{% for cell in row %}<td class="mono">{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+        </table></div>
+        {% endif %}
+      </div>
+      <form method="post" action="/tools/gherkin/run?feature={{ feature.path | urlencode }}&scenario={{ scenario.name | urlencode }}{% if tool %}&tool={{ tool | urlencode }}{% endif %}" class="inline" data-loading="Running the scenario on the stack"><button type="submit" class="button ghost small" aria-label="Run the scenario {{ scenario.name }}">▶ Run</button></form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</section>
+{% else %}
+<section class="card empty"><div><div class="big">🥒</div><p>No feature file in <code>features/</code> yet.</p></div></section>
+{% endfor %}
+{% endblock %}

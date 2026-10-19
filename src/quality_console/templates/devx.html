@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "_tools.html" import tool_cards %}
+{% set section = "devx" %}
+{% block title %}DevX - Quality Console{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>DevX</h1>
+    <p class="subtitle">Tools for developers: what an endpoint really touches, test data on demand.</p>
+  </div>
+</div>
+<div class="info"><p><strong>Tips</strong> gathers short reminders by topic. <strong>retro-footprint</strong> plays a test for real (pages of a front, API calls, SQL of its own) and reads the traces in Tempo. <strong>Vault</strong> shows the credentials the services hold now: short-lived MySQL and RabbitMQ users, replaced every few minutes, and the bank's long-lived key. <strong>Quality Console MCP</strong> opens the page of the MCP server, which lets Claude Code run scenarios, read test runs and measure a footprint on the local stack, with three examples.</p></div>
+<section class="card">
+  {{ tool_cards("devx") }}
+</section>
+{% endblock %}

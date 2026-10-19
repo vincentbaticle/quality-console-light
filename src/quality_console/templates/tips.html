@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "_tips.html" import tips_section %}
+{% set section = "devx" %}
+{% block title %}Tips - Quality Console{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/devx">DevX</a> / Tips</nav>
+<div class="page-head">
+  <div>
+    <h1>Tips</h1>
+    <p class="subtitle">Short reminders on GitLab, Git, SQL, Docker, QA and front design, a few examples each, to be completed together.</p>
+  </div>
+</div>
+<div class="info"><p>Click a tab to change topic. In <strong>Front design</strong>, <strong>Let it snow</strong> covers the page with snow until clicked again, and a click on the wood leaves a bullet hole; nothing calls a server.</p></div>
+{{ tips_section() }}
+{% endblock %}

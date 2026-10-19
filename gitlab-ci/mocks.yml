@@ -1,0 +1,23 @@
+---
+.prek:run:
+  image: python:${PYTHON_VERSION}-slim
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends git
+    - pip install --no-cache-dir prek
+  script:
+    - prek run --all-files --show-diff-on-failure
+  cache:
+    key: prek
+    paths:
+      - .cache/pre-commit
+
+.sonarqube:mock:
+  image: alpine:3.22
+  variables:
+    BLOCK_SONAR_SOURCES: "src/"
+    BLOCK_SONAR_TESTS: "tests/"
+    BLOCK_SONAR_COVERAGE_REPORTS: "coverage.unit.xml,coverage.integration.xml"
+  script:
+    - echo "[sonar mock] would scan sources=${BLOCK_SONAR_SOURCES} tests=${BLOCK_SONAR_TESTS}"
+    - for report in $(echo "$BLOCK_SONAR_COVERAGE_REPORTS" | tr ',' ' '); do test -s "$report" || { echo "[sonar mock] missing coverage report $report"; exit 1; }; echo "[sonar mock] would upload $report"; done
+    - echo "[sonar mock] quality gate PASSED (simulated, no SonarQube server called)"

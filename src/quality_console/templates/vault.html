@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Vault - Quality Console{% endblock %}
+{% block content %}
+<style>
+  .lease-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .role { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
+  .role h3 { margin: 0 0 2px; font-size: 14px; }
+  .role .opens { margin: 0 0 8px; color: var(--fg-secondary); font-size: 12.5px; }
+  .lease { display: grid; gap: 4px; padding: 8px 0; border-top: 1px dashed var(--border); font-size: 12.5px; }
+  .lease .id { font: 12px var(--mono); color: var(--fg-secondary); overflow-wrap: anywhere; }
+  .life { height: 6px; border-radius: 999px; background: var(--bg-subtle); overflow: hidden; }
+  .life span { display: block; height: 100%; background: var(--positive); transition: width 1s linear; }
+  .life.low span { background: var(--warning); }
+  .ttl { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .static { border-left: 4px solid var(--info); }
+</style>
+<nav class="crumbs"><a href="/devx">DevX</a> / Vault</nav>
+<div class="page-head">
+  <div>
+    <h1>Vault <span class="badge live">live</span></h1>
+    <p class="subtitle">Which credentials the services hold now, for how long, and the one that never expires.</p>
+  </div>
+</div>
+<div class="info">
+  <p>No service talks to Vault. A <strong>Vault Agent</strong> beside them logs in with its AppRole, asks Vault for each service's credentials and writes them into a file the service reads at each connection. A <strong>short-lived</strong> credential is a MySQL or RabbitMQ user Vault creates for one service: it lives 2 minutes, the agent renews it up to 6 minutes, then asks for a new one and rewrites the file; Vault drops the old user when its lease ends. A leak is worth minutes. The <strong>long-lived</strong> one is the Bank Partner's key: the bank issued it once, Vault only keeps it, the bank decides when it changes.</p>
+  <p>The page reads Vault with the console's own token: it lists leases and reads metadata, never a value. The page refreshes every 10 seconds; the bars run down in between. The full Vault UI is on <a href="http://localhost:8200/ui/vault/secrets">localhost:8200</a> (token <code>root</code>, dev mode).</p>
+</div>
+{% if state.error %}
+<section class="card empty"><div><div class="big">🔐</div><p>{{ state.error }}</p><p class="hint">Start the stack with <code>mise run up</code>: it starts Vault, configures it and starts the agent.</p></div></section>
+{% else %}
+<section class="card">
+  <div class="section-head"><h2>Short-lived: one user per service, replaced every few minutes</h2><span class="hint">{{ state.roles | map(attribute="leases") | map("length") | sum }} credentials alive now</span></div>
+  <div class="lease-grid">
+    {% for role in state.roles %}
+    <div class="role">
+      <h3>{{ role.engine }}/creds/{{ role.role }}</h3>
+      <p class="opens">{{ role.opens }} · lives {{ role.default_ttl // 60 }} min, renewed up to {{ role.max_ttl // 60 }} min</p>
+      {% for lease in role.leases %}
+      <div class="lease" data-ttl="{{ lease.ttl_seconds }}" data-default="{{ role.default_ttl }}">
+        <span class="id">{{ lease.lease_id.rsplit("/", 1)[-1] }}</span>
+        <span>issued {{ age(lease.issued) }} ago{% if lease.renewed %}, renewed{% endif %} · <span class="ttl">{{ lease.ttl_seconds }}</span> s left before renewal or end</span>
+        <div class="life"><span></span></div>
+      </div>
+      {% else %}
+      <p class="hint">No credential out: the service is not running, or between two.</p>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+<section class="card">
+  <div class="section-head"><h2>Long-lived: a key the bank issued</h2><span class="hint">Metadata only, never the value</span></div>
+  {% for secret in state.secrets %}
+  <div class="role static">
+    <h3>{{ secret.title }} <span class="badge static">long-lived</span></h3>
+    <p class="opens">{{ secret.story }}</p>
+    <p class="mono">{{ secret.path }} · version {{ secret.version }} · written {{ age(secret.created) }} ago</p>
+    <p class="hint">The API sends it on each call to the bank (<code>X-Api-Key</code>); the acceptance tests read it from Vault too, with a token allowed this path only.</p>
+  </div>
+  {% endfor %}
+</section>
+<script>
+  (() => {
+    const leases = [...document.querySelectorAll(".lease")];
+    const draw = () => leases.forEach((lease) => {
+      const left = Math.max(0, Number(lease.dataset.ttl));
+      const share = Math.min(100, (left / Number(lease.dataset.default || 1)) * 100);
+      lease.querySelector(".ttl").textContent = left;
+      lease.querySelector(".life span").style.width = `${share}%`;
+      lease.querySelector(".life").classList.toggle("low", share < 25);
+      lease.dataset.ttl = left - 1;
+    });
+    draw();
+    setInterval(draw, 1000);
+    setTimeout(() => location.reload(), 10000);
+  })();
+</script>
+{% endif %}
+{% endblock %}

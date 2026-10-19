@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% set section = "databases" %}
+{% block title %}{{ database }} - Quality Console{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/databases">Databases</a> / {{ database }}</nav>
+<div class="page-head">
+  <div>
+    <h1>{{ database }}</h1>
+    <p class="subtitle">{{ tables | length }} tables, {{ tables | sum(attribute="rows") }} rows.</p>
+  </div>
+</div>
+<div class="info"><p>Each card is a table with its exact row count (one <code>COUNT(*)</code> per table, visible as spans in Grafana). Clicking opens its first 50 rows. Tables are split between the ones live experimentation writes and the static ones.</p></div>
+{% set live = tables | selectattr("name", "in", live_names) | list %}
+{% set static = tables | rejectattr("name", "in", live_names) | list %}
+{% for title, kind, group, hint in [("Live experimentation", "live", live, "Written by the storefront products: orders, accounts, workflow state. Counts move as you play."), ("Static", "static", static, "Loaded once at start-up, only ever read.")] if group %}
+<section class="card zone {{ kind }}-zone">
+  <div class="section-head"><h2>{{ title }} <span class="badge {{ kind }}">{{ group | length }} {{ kind }}</span></h2><span class="hint">{{ hint }}</span></div>
+  <ul class="grid-cards">
+    {% for table in group %}
+    <li><a href="/databases/{{ database }}/tables/{{ table.name }}" data-loading="Reading {{ table.name }}"><strong>{{ table.name }}</strong><small>{{ table.rows }} rows</small></a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+{% endblock %}

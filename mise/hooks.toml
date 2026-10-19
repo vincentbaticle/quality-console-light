@@ -1,0 +1,25 @@
+# $schema = "https://mise.jdx.dev/schema/mise-task.json"
+
+["hooks:run"]
+alias = ["hooks-run"]
+description = "Run all quality hooks on the whole tree (usage: mise run hooks:run [-- <hook>])"
+usage = 'arg "[hook]" help="Run only this hook id"'
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+hook="${usage_hook:-}"
+if [ -n "$hook" ]; then prek run -a "$hook"; else prek run --all-files; fi
+'''
+
+["hooks:install"]
+alias = ["hooks-install"]
+description = "Install git hooks locally (pre-commit + commit-msg)"
+run = ["prek install", "prek install --hook-type commit-msg"]
+
+["release:check"]
+description = "Show the tag the next release gets from the commit types since the last tag (fix: patch, feat: minor, breaking: major, anything else: no tag)"
+run = "cog bump --auto --dry-run"
+
+["release"]
+description = "Tag main with the version the commit types since the last tag call for, then push the tag"
+run = ["cog bump --auto", "git push origin \"v$(cog get-version)\""]

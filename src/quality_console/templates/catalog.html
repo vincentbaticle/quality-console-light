@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Software catalog - Quality Console{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Software catalog</h1>
+    <p class="subtitle">{{ systems | length }} systems, read from the <code>catalog</code> database, generated from <code>catalog/catalog.yaml</code>. Test metadata names these entries, so every test result points back here.</p>
+  </div>
+</div>
+<div class="info"><p>Read from the <code>catalog</code> database, itself generated from <code>catalog/catalog.yaml</code>. A database link opens it in the database browser, an API link opens its contract, <strong>runs</strong> opens the test results filtered on that component, <strong>test runs</strong> opens the runs of that team.</p><p>The <strong>map</strong> draws each system, its products and its components, coloured by the test runs whose metadata names them: a job counts for an item when its tests declare it (<code>system</code>, <code>product</code>, <code>component</code>), its last run (per job and environment) says passed or failed.</p></div>
+<style>
+  .map-wrap { overflow-x: auto; }
+  .catalog-map { display: block; min-width: 760px; width: 100%; height: auto; font-family: var(--font); }
+  .map-column { font: 700 11px var(--font); letter-spacing: .06em; text-transform: uppercase; fill: var(--fg-muted); }
+  .map-card { fill: color-mix(in srgb, var(--node) 9%, var(--bg-surface)); stroke: var(--node); stroke-width: 1.5; }
+  .map-node.untested .map-card { stroke-dasharray: 4 3; }
+  .map-node:hover .map-card { stroke-width: 2.5; }
+  .map-bar { fill: var(--node); }
+  .map-icon path { fill: none; stroke: var(--node); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .map-title { font-size: 13px; font-weight: 650; fill: var(--fg); }
+  .map-sub { font-size: 11px; fill: var(--fg-secondary); }
+  .map-link { fill: none; stroke: var(--border-strong); stroke-width: 1.3; }
+  .map-call { fill: none; stroke: var(--brand); stroke-width: 1.3; stroke-dasharray: 5 4; }
+  .map-arrowhead { fill: var(--border-strong); }
+  .map-arrowhead-call { fill: var(--brand); }
+  .map-legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 12px; font-size: 12.5px; color: var(--fg-secondary); }
+  .map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .map-legend i { width: 14px; height: 14px; border-radius: 4px; border: 2px solid; }
+</style>
+<section class="card">
+  <div class="section-head"><h2>Map of the catalog, coloured by the tests</h2><span class="hint">Click an item to see its test runs.</span></div>
+  <div class="map-legend">
+    <span><i style="border-color: var(--positive)"></i>tested: every known job ran in {{ recent_days }} days, last run passed</span>
+    <span><i style="border-color: color-mix(in srgb, var(--positive) 50%, var(--fg-muted))"></i>partly: only some of its known jobs ran lately (the bar under it)</span>
+    <span><i style="border-color: var(--negative)"></i>failing: the last run of one of its jobs failed</span>
+    <span><i style="border-color: var(--fg-muted); border-style: dashed"></i>no test known</span>
+    <span><svg width="26" height="8"><path d="M0 4h22" stroke="var(--brand)" stroke-dasharray="5 4"/></svg>calls its API or consumes its events</span>
+  </div>
+  <div class="map-wrap">{{ map }}</div>
+</section>
+{% for system in systems %}
+<section class="card system" id="{{ system.name }}">
+  <div class="section-head">
+    <div>
+      <h3>{{ system.title }} <span class="badge meta">{{ system.domain }}</span></h3>
+      <p>{{ system.description }}</p>
+    </div>
+    <span class="secondary">owned by <strong>{{ system.owner }}</strong> · <a href="/test-results?date_range=all&system={{ system.name }}">test runs</a></span>
+  </div>
+  {% if system.products %}
+  <h2>Products</h2>
+  <div class="two-cols">
+    {% for product in system.products %}
+    <div><strong>{{ product.title }}</strong> <span class="badge meta">{{ product.capability }}</span><p class="secondary" style="margin:2px 0 8px">{{ product.description }}</p></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <h2>Components</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Component</th><th>Type</th><th>Owner</th><th>APIs</th><th>Depends on</th><th>Tests</th></tr></thead>
+      <tbody>
+        {% for component in system.components %}
+        <tr>
+          <td class="wrap"><strong>{{ component.title }}</strong> <span class="badge meta">{{ component.lifecycle }}</span><br /><span class="mono muted">{{ component.source }}</span><br /><span class="secondary">{{ component.description }}</span></td>
+          <td>{{ component.type }}</td>
+          <td>{{ component.owner }}</td>
+          <td class="wrap">
+            {% for relation, names in component.apis.items() %}
+            <div><span class="muted">{{ relations.get(relation, relation) }}</span> {% for name in names %}{% if apis.get(name) and apis[name].target %}<a href="/tools/apis/{{ name }}">{{ name }}</a>{% else %}{{ name }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</div>
+            {% endfor %}
+          </td>
+          <td class="wrap">
+            {% for name in component.resources %}
+            {% set resource = resources.get(name) %}
+            <div>{% if resource and resource.type == "database" %}<a href="/databases/{{ resource.target }}">{{ name }}</a>{% else %}{{ name }}{% endif %} <span class="muted">{{ resource.type if resource else "" }}</span></div>
+            {% endfor %}
+          </td>
+          <td><a href="/test-results?date_range=all&component={{ component.name }}">runs</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if system.apis or system.resources %}
+  <div class="two-cols" style="margin-top:14px">
+    {% if system.apis %}
+    <div>
+      <h2>APIs</h2>
+      <ul class="side-list">
+        {% for api in system.apis %}
+        <li>{% if api.target %}<a href="/tools/apis/{{ api.name }}">{% else %}<a>{% endif %}<strong>{{ api.title }}</strong> <span class="badge type">{{ api.type }}</span><small>{{ api.description }}</small></a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% if system.resources %}
+    <div>
+      <h2>Resources</h2>
+      <ul class="side-list">
+        {% for resource in system.resources %}
+        <li>{% if resource.type == "database" %}<a href="/databases/{{ resource.target }}">{% else %}<a>{% endif %}<strong>{{ resource.title }}</strong> <span class="badge type">{{ resource.type }}</span><small>{{ resource.description }}</small></a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endfor %}
+<section class="card">
+  <h2>Teams</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Team</th><th>Jira project</th><th>What it owns</th><th></th></tr></thead>
+      <tbody>
+        {% for team in teams %}
+        <tr><td><strong>{{ team.title }}</strong> <span class="mono muted">{{ team.name }}</span></td><td class="mono">{{ team.jira_project }}</td><td class="wrap secondary">{{ team.description }}</td><td><a href="/test-results?date_range=all&group={{ team.name }}">test runs</a></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

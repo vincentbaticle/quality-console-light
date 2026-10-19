@@ -1,0 +1,34 @@
+captured_at: '2026-10-08T20:18:57.277265+00:00'
+stories:
+  paid-order:
+    order:
+      username: ada
+      sku: BK-0004
+      quantity: 1
+    events:
+    - after_ms: 42
+      queue: order-workflow
+      body:
+        workflow_id: <workflow_id>
+        type: reserve_stock
+    - after_ms: 1654
+      queue: order-workflow
+      body:
+        workflow_id: <workflow_id>
+        type: issue_invoice
+    - after_ms: 3265
+      queue: order-workflow
+      body:
+        workflow_id: <workflow_id>
+        type: capture_payment
+  out-of-stock-order:
+    order:
+      username: grace
+      sku: EL-0001
+      quantity: 1
+    events:
+    - after_ms: 31
+      queue: order-workflow
+      body:
+        workflow_id: <workflow_id>
+        type: reserve_stock

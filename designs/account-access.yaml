@@ -1,0 +1,92 @@
+title: Account access, from the first sign-in to a blocked account
+product: account-access
+purpose: >-
+  Every way an account goes through the simulated Auth0 tenant: created
+  without a password, the welcome email, the single-use link, the password
+  policy, sign-in, the second factor, ten wrong passwords, the reset. The red dashed transitions
+  are the ones no Gherkin scenario walks yet, such as an account migrated from
+  the legacy login or the link of the Management API.
+nodes:
+  - {id: new_address, label: "New plus tag of the QA mailbox", kind: start}
+  - {id: seeded, label: "Seeded account, ada grace zoe or lin", kind: start}
+  - {id: unknown, label: "Email no account uses", kind: start}
+  - {id: legacy, label: "Account migrated from the legacy login", kind: start}
+  - {id: signup, label: "Account created without password", kind: state}
+  - {id: welcome, label: "Welcome email in the mailbox", kind: state}
+  - {id: link_valid, label: "Link unused and under 5 days?", kind: check}
+  - {id: policy, label: "Password meets the policy?", kind: check}
+  - {id: password_set, label: "Password set", kind: state}
+  - {id: signin, label: "Right password?", kind: check}
+  - {id: code, label: "Code of the app right and never used?", kind: check}
+  - {id: code_refused, label: "Code refused 401", kind: failure}
+  - {id: enrolled, label: "Second factor enrolled, secret kept by the test", kind: state}
+  - {id: signed_in, label: "Signed in 200", kind: outcome}
+  - {id: link_refused, label: "Link refused 400", kind: failure}
+  - {id: policy_refused, label: "Password refused 422", kind: failure}
+  - {id: wrong, label: "Refused 401 same answer as an unknown email", kind: failure}
+  - {id: blocked, label: "Blocked 423", kind: failure}
+  - {id: unblock_email, label: "Unblock email in the mailbox", kind: state}
+  - {id: no_password, label: "No password yet 403", kind: failure}
+  - {id: reset_email, label: "Reset email in the mailbox", kind: state}
+  - {id: ticket, label: "Link from the Management API without email", kind: state}
+edges:
+  - {from: new_address, to: signup, label: creates an account}
+  - {from: legacy, to: signup, label: migrated keeping its address}
+  - {from: signup, to: welcome, label: email sent}
+  - {from: welcome, to: link_valid, label: opens the link}
+  - {from: link_valid, to: policy, label: "yes"}
+  - {from: link_valid, to: link_refused, label: used or expired}
+  - {from: policy, to: password_set, label: "yes"}
+  - {from: policy, to: policy_refused, label: "no"}
+  - {from: password_set, to: link_valid, label: opens the same link again}
+  - {from: password_set, to: signin, label: signs in}
+  - {from: password_set, to: reset_email, label: forgot the password}
+  - {from: reset_email, to: link_valid, label: opens the reset link}
+  - {from: signin, to: signed_in, label: "yes"}
+  - {from: signin, to: code, label: "yes, second factor: mfa_required 403"}
+  - {from: code, to: signed_in, label: "yes"}
+  - {from: code, to: code_refused, label: wrong or already used}
+  - {from: code_refused, to: code, label: the next code 30 s later}
+  - {from: password_set, to: enrolled, label: enrols an authenticator app}
+  - {from: enrolled, to: signin, label: signs in}
+  - {from: signin, to: wrong, label: "no"}
+  - {from: wrong, to: blocked, label: tenth in a row}
+  - {from: blocked, to: unblock_email, label: email sent}
+  - {from: unblock_email, to: link_valid, label: opens the unblock link}
+  - {from: seeded, to: signin, label: signs in}
+  - {from: seeded, to: blocked, label: already blocked}
+  - {from: seeded, to: no_password, label: never opened the email}
+  - {from: seeded, to: ticket, label: QA asks the Management API}
+  - {from: ticket, to: link_valid, label: opens the link}
+  - {from: unknown, to: wrong, label: signs in}
+scenarios:
+  - scenario: A new account receives the email to choose a password
+    feature: account-access/account-emails.feature
+    path: [new_address, signup, welcome]
+  - scenario: A customer sets the password from the email, then signs in
+    feature: account-access/account-emails.feature
+    path: [new_address, signup, welcome, link_valid, policy, password_set, signin, signed_in]
+  - scenario: The password link works only once
+    feature: account-access/account-emails.feature
+    path: [new_address, signup, welcome, link_valid, policy, password_set, link_valid, link_refused]
+  - scenario: A forgotten password gets a reset link
+    feature: account-access/account-emails.feature
+    path: [new_address, signup, welcome, link_valid, policy, password_set, reset_email]
+  - scenario: Ten wrong passwords block the account and send an unblock email
+    feature: account-access/account-emails.feature
+    path: [new_address, signup, welcome, link_valid, policy, password_set, signin, wrong, blocked, unblock_email]
+  - scenario: A customer signs in with their password
+    feature: account-access/sign-in.feature
+    path: [seeded, signin, signed_in]
+  - scenario: An unknown email gets the same answer as a wrong password
+    feature: account-access/sign-in.feature
+    path: [unknown, wrong]
+  - scenario: A blocked customer is told to check their email
+    feature: account-access/sign-in.feature
+    path: [seeded, blocked]
+  - scenario: A customer without a password yet is sent back to their email
+    feature: account-access/sign-in.feature
+    path: [seeded, no_password]
+  - scenario: A customer with a second factor signs in with the code of their app
+    feature: account-access/sign-in.feature
+    path: [seeded, signin, code, signed_in]

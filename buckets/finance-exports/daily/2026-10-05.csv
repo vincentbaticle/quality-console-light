@@ -1,0 +1,3 @@
+invoice_number,order_id,total_cents,currency
+INV-2026-1000,1,1990,EUR
+INV-2026-1001,2,129900,EUR

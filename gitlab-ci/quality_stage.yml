@@ -1,0 +1,10 @@
+---
+sonarqube:
+  stage: quality
+  extends: .sonarqube:mock
+  needs:
+    - job: unit-tests
+      artifacts: true
+    - job: integration-tests
+      artifacts: true
+  rules: !reference [.rules, tests]

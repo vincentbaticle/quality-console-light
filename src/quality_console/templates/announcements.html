@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Release announcements - Quality Console{% endblock %}
+{% block content %}
+<style>
+  .slack { display: grid; grid-template-columns: 36px 1fr; gap: 10px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-surface); }
+  .slack + .slack { margin-top: 14px; }
+  .slack .avatar { width: 36px; height: 36px; border-radius: 6px; display: grid; place-items: center; background: var(--brand-soft); font-size: 18px; }
+  .slack .who { font-size: 13px; }
+  .slack .who strong { margin-right: 6px; }
+  .slack .who .muted { font-size: 12px; }
+  .slack h3 { margin: 6px 0 8px; font-size: 15px; }
+  .slack p { margin: 0 0 10px; line-height: 1.5; }
+  .slack .block-title { font-weight: 700; margin: 0; }
+  .slack .footer { margin: 4px 0 0; font-size: 12px; color: var(--fg-secondary); }
+  .slack .footer code { font-size: 12px; }
+  .starts td.num { font-variant-numeric: tabular-nums; }
+</style>
+<nav class="crumbs"><a href="/tools">Tools</a> / Release announcements</nav>
+<div class="page-head">
+  <div>
+    <h1>Release announcements <span class="badge static">static</span></h1>
+    <p class="subtitle">The release announcements of each system, as <code>/announce-release</code> drafts them for Slack: one short message for a whole system, from the changelogs of all its components.</p>
+  </div>
+</div>
+<div class="info"><p>Nothing to click here: the drafts are read from <code>announcements/</code>. In Claude Code, <code>/announce-release quality #platform-releases</code> resolves the components of the system in the catalog, reads their changelogs since the last announcement, drops the noise (bots, CI, chores), adds the ticket and merge request context, and drafts 10 to 15 lines: a title with the version, one context sentence, 1 to 3 headline features, the fixes, the actions users must take, then <code>Tickets:</code> and <code>Versions:</code>. It saves a Slack draft and never posts: the developer reads it and sends it.</p><p><strong>Where the next run starts</strong> comes from the <code>Versions:</code> line of the newest announcement of each system: the skill reads it back in the channel, so a second run only covers what changed since.</p></div>
+{% if announcements %}
+<section class="card starts">
+  <div class="section-head"><h2>Where the next run starts</h2><span class="hint">From the <code>Versions:</code> line of each system's newest announcement.</span></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>System</th><th>Component</th><th>Announced up to</th></tr></thead>
+    <tbody>
+      {% for system, versions in starts.items() %}{% for name, version in versions.items() %}
+      <tr><td>{{ system }}</td><td class="mono">{{ name }}</td><td class="mono num">v{{ version }}</td></tr>
+      {% endfor %}{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+<section class="card">
+  <div class="section-head"><h2>Announcements, newest first</h2><span class="hint">{{ announcements | length }} drafts</span></div>
+  {% for a in announcements %}
+  <article class="slack" aria-label="{{ a.title }}">
+    <div class="avatar" aria-hidden="true">📣</div>
+    <div>
+      <div class="who"><strong>Release bot draft</strong><span class="muted">{{ a.date }} · #platform-releases · {{ a.system }} v{{ a.version }}</span></div>
+      <h3>{{ a.title }}</h3>
+      {% for block in a.blocks %}
+        {% if block | length > 1 %}<p><span class="block-title">{{ block[0] }}</span><br>{{ block[1:] | join("<br>" | safe) }}</p>{% else %}<p>{{ block[0] }}</p>{% endif %}
+      {% endfor %}
+      <p class="footer">Tickets: {% if a.tickets %}{{ a.tickets | join(" · ") }}{% else %}none{% endif %}</p>
+      <p class="footer">Versions: {% for name, version in a.versions.items() %}<code>{{ name }} v{{ version }}</code>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+    </div>
+  </article>
+  {% endfor %}
+</section>
+{% else %}
+<section class="card empty"><div><div class="big">📣</div><p>No announcement in <code>announcements/</code> yet: run <code>/announce-release &lt;system&gt; &lt;#channel&gt;</code>.</p></div></section>
+{% endif %}
+{% endblock %}

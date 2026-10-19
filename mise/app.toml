@@ -1,0 +1,66 @@
+# $schema = "https://mise.jdx.dev/schema/mise-task.json"
+
+["install"]
+description = "Install the Python dependencies and the Chromium browser Playwright drives"
+run = ["pdm install", "pdm run playwright install chromium"]
+
+["app:up"]
+alias = ["up"]
+description = "Run the whole stack by hand (MySQL, Redis, bank, API, front, observability): the page on http://localhost:8080, the traces on http://localhost:3000"
+run = "docker compose up -d --build --wait"
+
+["app:down"]
+alias = ["down"]
+description = "Stop the stack started by app:up and delete its containers, the database included"
+run = "docker compose down --remove-orphans"
+
+["app:traffic"]
+alias = ["traffic"]
+description = "Send a few greetings through the front, the ones to look for in the traces (needs mise run up)"
+run = "for username in ada grace zoe dennis nobody; do curl -s \"http://localhost:8080/api/hello?username=$username\"; echo; done"
+
+["traces"]
+description = "Open Grafana on the hello-api traces of the last 15 minutes (needs mise run up)"
+run = 'pdm run python -m webbrowser -t "$TRACES_URL"'
+
+["partner:up"]
+description = "Start the fake Bank Partner and its database on http://localhost:8090, the one the capture records"
+run = "docker compose up -d --build --wait partner vault-init"
+
+["capture:examples"]
+description = "Record what the Bank Partner answers for the story usernames into capture/journal.json (needs mise run partner:up)"
+env = { CAPTURE_PARTNER_URL = "http://localhost:8090" }
+run = "pdm run python -m scripts.capture_partner"
+
+["capture:merge"]
+description = "Rewrite the captured examples of contracts/bank-partner-examples.yaml from capture/journal.json, hand-written ones untouched"
+run = "pdm run python -m scripts.merge_captured_examples"
+
+["results:seed"]
+description = "Write four weeks of made-up CI history into the local results bucket (needs mise run up), then index it"
+run = ["STORAGE_EMULATOR_HOST=$RESULTS_EMULATOR_HOST pdm run python -m scripts.seed_results", "STORAGE_EMULATOR_HOST=$RESULTS_EMULATOR_HOST pdm run python -m scripts.build_results_index"]
+
+["results:index"]
+description = "Rebuild the run index of the local results bucket now: the job a scheduler runs every 30 minutes in production"
+run = "STORAGE_EMULATOR_HOST=$RESULTS_EMULATOR_HOST pdm run python -m scripts.build_results_index"
+
+["catalog:sql"]
+description = "Regenerate db/05-catalog.sql from catalog/catalog.yaml, after any edit of the catalog (then mise run down && mise run up to reload it)"
+run = "pdm run python -m scripts.catalog_sql"
+
+["contracts:export"]
+description = "Write the OpenAPI contracts of the storefront API, the identity API and the Gherkin runner into contracts/, after changing a route"
+run = "pdm run python -m scripts.export_contracts"
+
+["capture:events"]
+description = "Record the RabbitMQ events the order workflow really publishes, one order per story, into capture/events-journal.json (needs mise run up)"
+env = { CAPTURE_BROKER_URL = "amqp://guest:guest@localhost:5672/%2F", CAPTURE_STOREFRONT_URL = "http://localhost:8080" }
+run = ["docker compose exec -T rabbitmq rabbitmqctl trace_on", "pdm run python -m scripts.capture_events", "docker compose exec -T rabbitmq rabbitmqctl trace_off"]
+
+["capture:events-merge"]
+description = "Rewrite contracts/order-workflow-recorded.yaml from capture/events-journal.json, then review the diff"
+run = "pdm run python -m scripts.merge_captured_events"
+
+["demo:freeze"]
+description = "Freeze the running console into static pages under site/, the demo GitHub Pages serves (needs mise run up and mise run results:seed)"
+run = "pdm run python -m scripts.freeze_console"

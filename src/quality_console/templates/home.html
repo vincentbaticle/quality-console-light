@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "_tools.html" import tools_page %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Quality Console</h1>
+    <p class="subtitle">What the company runs, how it is tested, and the tools to look closer.</p>
+  </div>
+</div>
+<div class="info"><p>Four zones. <strong>Static Cockpit QA</strong> is the QA cockpit a real company would have. <strong>Live experimentation</strong> is the playground: the storefront products and the services beside them read, write and delete for real in the dockerised tables, queue and mailbox. <strong>DevX</strong> holds the developer tools, the tips among them. <strong>Utility tools</strong> make test files on your disk, audio tracks first. Every tool has its page in <strong>Documentation</strong>.</p><p>Each tool, database, table, bucket and feature carries its label: <span class="badge live">live</span> when using the stack changes it, <span class="badge static">static</span> when it is loaded once and only read, <span class="badge mixed">mixed</span> when it holds both, <span class="badge mock">mock</span> when nothing is real.</p></div>
+{{ tools_page(links, details, storefront, products) }}
+{% endblock %}

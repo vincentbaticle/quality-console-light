@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Bucket browser - Quality Console{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/tools">Tools</a> / <a href="/tools/bucket">Bucket browser</a>{% if bucket %} / <a href="/tools/bucket?bucket={{ bucket }}">{{ bucket }}</a>{% for name, path in crumbs %} / <a href="/tools/bucket?bucket={{ bucket }}&prefix={{ path | urlencode }}">{{ name }}</a>{% endfor %}{% endif %}</nav>
+<div class="page-head">
+  <div>
+    <h1>{% if bucket %}gs://{{ bucket }}/{{ prefix }} {% set kind = bucket_kind(bucket) %}<span class="badge {{ kind }}">{{ kind }}</span>{% else %}Bucket browser{% endif %}</h1>
+    <p class="subtitle">{% if bucket %}{{ folders | length }} folder(s), {{ objects | length }} file(s). A file opens in place, sandboxed, or downloads.{% else %}The buckets the console's storage client lists: the local emulator's with <code>mise run up</code>, a real project's with Application Default Credentials.{% endif %}</p>
+  </div>
+</div>
+<div class="info"><p>Clicking a bucket or a folder lists what it holds. A file opens in a new tab, sandboxed (an HTML report cannot run its scripts), <strong>download</strong> saves it. The team buckets (<code>finance-exports</code>, <code>catalog-feeds</code>) are loaded from <code>buckets/</code> at start; <code>test-results</code> holds the runs. <span class="badge live">live</span>: written by every test run; <span class="badge static">static</span>: loaded once.</p></div>
+{% if not bucket %}
+<section class="card">
+  <ul class="grid-cards">
+    {% for name in buckets %}
+    {% set kind = bucket_kind(name) %}
+    <li><a href="/tools/bucket?bucket={{ name }}"><span class="icon">🪣</span><strong>{{ name }} <span class="badge {{ kind }}">{{ kind }}</span></strong><small>gs://{{ name }}/ · {% if kind == "live" %}written by every test run{% else %}loaded once from <code>buckets/</code>{% endif %}</small></a></li>
+    {% else %}
+    <li class="muted">No bucket.</li>
+    {% endfor %}
+  </ul>
+</section>
+{% else %}
+<section class="card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Size</th><th>Type</th><th>Updated</th><th></th></tr></thead>
+      <tbody>
+        {% for folder in folders %}
+        <tr><td><a href="/tools/bucket?bucket={{ bucket }}&prefix={{ folder | urlencode }}">📁 {{ folder | replace(prefix, "", 1) }}</a></td><td class="muted">folder</td><td></td><td></td><td></td></tr>
+        {% endfor %}
+        {% for object in objects %}
+        <tr>
+          <td><a href="/tools/bucket/object?bucket={{ bucket }}&name={{ object.name | urlencode }}" target="_blank" rel="noopener">📄 {{ object.short_name }}</a></td>
+          <td>{{ object.size | filesizeformat }}</td>
+          <td class="mono">{{ object.content_type }}</td>
+          <td class="secondary">{{ object.updated.strftime("%Y-%m-%d %H:%M") if object.updated else "" }}</td>
+          <td><a href="/tools/bucket/object?bucket={{ bucket }}&name={{ object.name | urlencode }}&download=true">download</a></td>
+        </tr>
+        {% endfor %}
+        {% if not folders and not objects %}<tr><td colspan="5" class="muted">Empty folder.</td></tr>{% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

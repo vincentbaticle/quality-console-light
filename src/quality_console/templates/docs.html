@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ selected.title }} - Documentation - Quality Console{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/tools">Tools</a> / <a href="/tools/docs">Documentation</a> / {{ selected.title }}</nav>
+<div class="page-head">
+  <div>
+    <h1>Documentation</h1>
+    <p class="subtitle">Every page of <code>docs/</code>: the guides, one page per tool, one per product, the demo scripts. The pages stay in the repository, reviewed with the code.</p>
+  </div>
+</div>
+<div class="info"><p>Clicking a page shows it; a link to another page opens it here. Each tool keeps its blue box for the page itself, and its <strong>📖 Documentation</strong> link, top right, opens its full page here.</p></div>
+<div class="split">
+  <aside class="sidebar scroll">
+    {% for name, pages in groups %}
+    <h2 style="margin:8px 0 0">{{ name }}</h2>
+    <ul class="side-list">
+      {% for doc in pages %}
+      <li><a href="/tools/docs?page={{ doc.slug | urlencode }}" class="{% if doc.slug == selected.slug %}selected{% endif %}"><strong>{{ doc.title }}</strong><small class="mono">docs/{{ doc.slug }}.md</small></a></li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  </aside>
+  <section class="card">
+    <p class="hint mono">docs/{{ selected.slug }}.md</p>
+    <div class="markdown">{{ selected.html | safe }}</div>
+  </section>
+</div>
+{% endblock %}

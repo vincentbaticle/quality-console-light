@@ -1,0 +1,41 @@
+title: Checkout, an order from placed to paid
+product: checkout
+purpose: >-
+  The order workflow as a journey: the API checks the customer and accepts the
+  order at once, then the worker runs one step per event. The red dashed
+  transitions have no scenario yet: a payment the provider refuses, a worker
+  that dies in the middle of a step and gets the event again.
+nodes:
+  - {id: order, label: "Order sent by the storefront", kind: start}
+  - {id: customer, label: "Active customer and known product?", kind: check}
+  - {id: refused, label: "Refused 404 nothing written", kind: failure}
+  - {id: accepted, label: "Accepted 202 order pending", kind: state}
+  - {id: stock, label: "Enough stock? reserve_stock", kind: check}
+  - {id: cancelled, label: "Order cancelled no payment", kind: failure}
+  - {id: invoice, label: "Invoice issued", kind: state}
+  - {id: payment, label: "Payment captured?", kind: check}
+  - {id: paid, label: "Order paid", kind: outcome}
+  - {id: payment_failed, label: "Payment failed order unpaid", kind: failure}
+  - {id: redelivered, label: "Worker restarted event delivered again", kind: state}
+edges:
+  - {from: order, to: customer, label: POST /api/orders}
+  - {from: customer, to: refused, label: "no"}
+  - {from: customer, to: accepted, label: "yes"}
+  - {from: accepted, to: stock, label: reserve_stock event}
+  - {from: stock, to: cancelled, label: "no"}
+  - {from: stock, to: invoice, label: yes then issue_invoice event}
+  - {from: invoice, to: payment, label: capture_payment event}
+  - {from: payment, to: paid, label: "yes"}
+  - {from: payment, to: payment_failed, label: "no"}
+  - {from: invoice, to: redelivered, label: worker dies mid-step}
+  - {from: redelivered, to: payment, label: same event again}
+scenarios:
+  - scenario: An order in stock is paid step by step
+    feature: checkout/place-order.feature
+    path: [order, customer, accepted, stock, invoice, payment, paid]
+  - scenario: An order out of stock is cancelled before any payment
+    feature: checkout/place-order.feature
+    path: [order, customer, accepted, stock, cancelled]
+  - scenario: A closed customer cannot order
+    feature: checkout/place-order.feature
+    path: [order, customer, refused]

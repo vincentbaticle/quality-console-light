@@ -1,0 +1,24 @@
+{
+  "name": "quality-console-light",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "16gb"
+  },
+  "containerEnv": {
+    "DOCKER_HOST": "unix:///var/run/docker.sock"
+  },
+  "postCreateCommand": "curl -fsSL https://mise.run | sh && ~/.local/bin/mise trust && ~/.local/bin/mise install && ~/.local/bin/mise exec -- pdm install",
+  "postStartCommand": "~/.local/bin/mise run up && ~/.local/bin/mise run results:seed",
+  "forwardPorts": [8081, 8080, 8025, 3000, 15672],
+  "portsAttributes": {
+    "8081": { "label": "Quality Console", "onAutoForward": "openBrowser" },
+    "8080": { "label": "Storefront" },
+    "8025": { "label": "QA mailbox" },
+    "3000": { "label": "Grafana" },
+    "15672": { "label": "RabbitMQ" }
+  }
+}

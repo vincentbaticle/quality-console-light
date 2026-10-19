@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% set section = "results" %}
+{% block title %}Test results - Quality Console{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% macro status_badge(status) -%}
+{%- set s = status | status -%}
+<span class="badge {{ s }}">{% if s == "success" %}✓ passed{% elif s == "failed" %}✕ failed{% else %}? unknown{% endif %}</span>
+{%- endmacro %}
+{% macro type_badge(kind) -%}
+<span class="badge type">{% if kind == "backend" %}⚙︎{% elif kind == "e2e" %}🖥{% elif kind == "acceptance" %}🥒{% else %}⚡{% endif %} {{ kind }}</span>
+{%- endmacro %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Test results</h1>
+    <p class="subtitle">
+      {% if age is none %}Not indexed yet.{% else %}Index updated {{ age }} min ago · {{ header.run_count }} runs indexed{% endif %}
+      <span class="help" title="Lists and counters read the run index. A scheduler rebuilds it every 30 minutes in production; Refresh rebuilds it now.">?</span>
+    </p>
+  </div>
+  <form method="post" action="/test-results/refresh" data-loading="Rebuilding the run index"><button type="submit" class="button">Refresh</button></form>
+</div>
+<div class="info"><p>The runs come from the run index, not from a crawl of the bucket. <strong>Refresh</strong> rebuilds the index now (a scheduler does it every 30 minutes in production), so a run you just uploaded shows up. The filters apply at once; a run opens its <strong>Details</strong> (JUnit, k6, files) and <strong>Trends</strong> (the pass rate of its job).</p></div>
+
+<div class="split">
+  <aside class="sidebar">
+    <div class="tiles">
+      <div class="tile"><div class="label">Runs</div><div class="value">{{ stats.total }}</div></div>
+      <div class="tile positive"><div class="label">Passed</div><div class="value">{{ stats.passed }}</div></div>
+      <div class="tile negative"><div class="label">Failed</div><div class="value">{{ stats.failed }}</div></div>
+    </div>
+    <form method="get" class="filters" id="filters">
+      <span class="segmented">
+        {% for name in date_ranges %}
+        <label class="{% if name == chosen.date_range %}active{% endif %}"><input type="radio" name="date_range" value="{{ name }}" {% if name == chosen.date_range %}checked{% endif %} onchange="this.form.requestSubmit()" />{{ name }}</label>
+        {% endfor %}
+      </span>
+      {% for name in list_filters + facet_filters %}
+      {% set values = statuses if name == "status" else options.get(name, []) %}
+      {% if values %}
+      <select name="{{ name }}" aria-label="{{ name }}" class="pill-select {% if chosen[name] %}set{% endif %}" onchange="this.form.requestSubmit()">
+        <option value="">{{ name | replace("_", " ") }}</option>
+        {% for value in values %}<option value="{{ value }}" {% if value == chosen[name] %}selected{% endif %}>{{ value }}</option>{% endfor %}
+      </select>
+      {% endif %}
+      {% endfor %}
+      <noscript><button type="submit" class="button">Filter</button></noscript>
+      <a href="/test-results" class="hint">Clear</a>
+    </form>
+    <p class="hint">{{ runs | length }} of {{ matching }} runs, newest first.</p>
+    <ul class="run-list">
+      {% for run in runs %}
+      <li>
+        <a class="run-card {% if run.id == selected_id %}selected{% endif %}" href="/test-results?{{ query }}{% if query %}&{% endif %}run={{ run.id | urlencode }}">
+          <div class="row"><span class="job">{{ run.job_name }}</span>{{ status_badge(run.ci_job_status) }}</div>
+          {% set c = run.test_counts %}{% if c.total %}<div class="counts">{{ c.passed }}/{{ c.total }} passed{% if c.failed %} · <span class="failed-text">{{ c.failed }} failed</span>{% endif %}{% if c.errors %} · <span class="failed-text">{{ c.errors }} {{ "error" if c.errors == 1 else "errors" }}</span>{% endif %}{% if c.skipped %} · {{ c.skipped }} skipped{% endif %}</div>{% endif %}
+          <div class="row" style="margin-top:6px">{{ type_badge(run.artifact_type) }}<span class="env {{ run.env }}">{{ run.env }}</span></div>
+          <div class="meta"><span>#{{ run.pipeline_id }} · <span class="mono">{{ run.commit_sha[:8] }}</span></span><span>{{ run.timestamp[:16] | replace("T", " ") }}</span></div>
+        </a>
+      </li>
+      {% else %}
+      <li class="hint">No run matches. Widen the date range, or Refresh after an upload.</li>
+      {% endfor %}
+    </ul>
+  </aside>
+
+  <section>
+    {% if detail %}
+    {% set run = detail.metadata %}
+    <div class="card">
+      <div class="page-head" style="margin-bottom:12px">
+        <div>
+          <h1>{{ run.job_name }} {{ status_badge(run.ci_job_status) }}</h1>
+          <p class="subtitle">{{ type_badge(run.artifact_type) }} <span class="env {{ run.env }}">{{ run.env }}</span> · pipeline #{{ run.pipeline_id }} · job {{ run.job_id or "local" }} · <span class="mono">{{ run.commit_sha }}</span> · {{ run.timestamp[:19] | replace("T", " ") }} UTC</p>
+        </div>
+        <span class="segmented">
+          {% for name in tabs %}
+          <a class="{% if name == tab %}active{% endif %}" href="/test-results?{{ query }}{% if query %}&{% endif %}run={{ run.id | urlencode }}&tab={{ name }}">{{ name | capitalize }}</a>
+          {% endfor %}
+        </span>
+      </div>
+      {% if run.test_meta %}<p>{% for name, values in run.test_meta.items() %}{% for value in values %}<span class="badge meta">{{ name }}: {{ value }}</span> {% endfor %}{% endfor %}</p>{% endif %}
+      <p class="hint mono">{{ run.id }}</p>
+    </div>
+
+    {% if tab == "trends" %}
+    <div class="card">
+      <h2>{{ run.job_name }} on {{ run.env }}</h2>
+      <div class="tiles" style="margin-bottom:16px">
+        <div class="tile"><div class="label">Avg pass rate <span class="help" title="Share of the last {{ trends.history | length }} runs of this job that passed.">?</span></div><div class="value">{{ trends.pass_rate }}%</div></div>
+        <div class="tile"><div class="label">Runs <span class="help" title="Passed runs out of the last runs loaded for this job.">?</span></div><div class="value">{{ trends.passed }}/{{ trends.history | length }}</div></div>
+        <div class="tile {% if trends.streak.status == 'success' %}positive{% elif trends.streak.status == 'failed' %}negative{% endif %}"><div class="label">Current streak <span class="help" title="Consecutive runs with the same outcome as the most recent one.">?</span></div><div class="value">{{ trends.streak.count }} {% if trends.streak.status == "success" %}passed{% elif trends.streak.status == "failed" %}failed{% else %}unknown{% endif %}</div></div>
+      </div>
+      {{ trends.chart }}
+      <p class="hint">Rolling pass rate over 3 runs · each point is a run, colored by its status · failed runs shaded · ringed: this run.</p>
+    </div>
+    <div class="card">
+      <h2>History · {{ trends.history | length }} runs</h2>
+      <div class="table-wrap" style="max-height:360px">
+        <table>
+          <thead><tr><th>Date</th><th>Pipeline</th><th>Commit</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for past in trends.history %}
+            <tr class="{% if past.id == run.id %}selected{% endif %}">
+              <td><a href="/test-results?date_range=all&tab=trends&run={{ past.id | urlencode }}">{{ past.timestamp[:16] | replace("T", " ") }}</a></td>
+              <td>#{{ past.pipeline_id }}</td>
+              <td class="mono">{{ past.commit_sha[:8] }}</td>
+              <td>{{ status_badge(past.ci_job_status) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    {% if detail.junit %}
+    {% set junit = detail.junit %}
+    <div class="card">
+      <h2>JUnit</h2>
+      <div class="tiles" style="margin-bottom:16px">
+        <div class="tile"><div class="label">Tests</div><div class="value">{{ junit.total }}</div></div>
+        <div class="tile positive"><div class="label">Passed</div><div class="value">{{ junit.passed }}</div></div>
+        <div class="tile negative"><div class="label">Failed</div><div class="value">{{ junit.failed }}</div></div>
+        <div class="tile"><div class="label">Errors</div><div class="value">{{ junit.errors }}</div></div>
+        <div class="tile"><div class="label">Skipped</div><div class="value">{{ junit.skipped }}</div></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Status</th><th>Test</th><th>Time</th></tr></thead>
+          <tbody>
+            {% for test in junit.tests | sort(attribute="status") %}
+            <tr>
+              <td><span class="badge {{ test.status }}">{{ test.status }}</span></td>
+              <td class="wrap"><span class="muted">{{ test.classname }}::</span>{{ test.name }}{% if test.message %}<pre class="message">{{ test.message }}</pre>{% endif %}</td>
+              <td>{{ "%.2f" | format(test.time) }} s</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+    {% if detail.perf_summary %}
+    {% set perf = detail.perf_summary %}
+    <div class="card">
+      <h2>Load test (k6)</h2>
+      <div class="tiles">
+        <div class="tile"><div class="label">Requests</div><div class="value">{{ perf.req_count }}</div></div>
+        <div class="tile"><div class="label">Requests/s</div><div class="value">{{ perf.req_rate }}</div></div>
+        <div class="tile {% if perf.error_rate >= 0.01 %}negative{% endif %}"><div class="label">Errors</div><div class="value">{{ "%.2f" | format(perf.error_rate * 100) }}%</div></div>
+        <div class="tile"><div class="label">Average</div><div class="value">{{ perf.duration_avg }} ms</div></div>
+        <div class="tile"><div class="label">p95</div><div class="value">{{ perf.duration_p95 }} ms</div></div>
+        <div class="tile"><div class="label">p99</div><div class="value">{{ perf.duration_p99 }} ms</div></div>
+      </div>
+      {% if perf.breaches %}<p class="error-text">✕ Thresholds broken: {{ perf.breaches | join(", ") }}</p>{% else %}<p class="secondary">✓ Every threshold held.</p>{% endif %}
+    </div>
+    {% endif %}
+    <div class="card">
+      <h2>Files</h2>
+      <ul class="grid-cards">
+        {% for path in detail.artifacts %}
+        {% set name = path.split("/")[-1] %}
+        <li><a href="/test-results/artifact?path={{ path | urlencode }}" target="_blank" rel="noopener"><span class="icon">{% if name.endswith(".html") %}📄{% elif name.endswith(".xml") %}🧾{% else %}📦{% endif %}</span><strong>{{ name }}</strong><small>open from the bucket</small></a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="card empty">
+      <div>
+        <div class="big">🧪</div>
+        <h1>Pick a run</h1>
+        <p>Its JUnit or k6 results and files, and how its job has been doing.</p>
+      </div>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "quality-console": {
+      "command": "mise",
+      "args": ["exec", "--", "pdm", "run", "python", "-m", "quality_mcp"]
+    }
+  }
+}

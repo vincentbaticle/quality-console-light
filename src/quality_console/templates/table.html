@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% set section = "databases" %}
+{% block title %}{{ table }} - Quality Console{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/databases">Databases</a> / <a href="/databases/{{ database }}">{{ database }}</a> / {{ table }}</nav>
+<div class="page-head">
+  <div>
+    <h1>{{ table }} {% set kind = table_kind(database, table) %}<span class="badge {{ kind }}">{{ kind }}</span></h1>
+    <p class="subtitle">{{ content.columns | length }} columns, {{ content.rows | length }} rows shown.</p>
+  </div>
+</div>
+<div class="info"><p><strong>Search</strong> filters on one column, exact or contains. The column is checked against what MySQL lists and the value is bound: a crafted name gets a 404, never reaches a query.</p></div>
+<section class="card">
+  <form method="get" class="filters" data-loading="Searching {{ table }}">
+    <label for="column" class="secondary">Search</label>
+    <select id="column" name="column">
+      {% for name in content.columns %}
+      <option value="{{ name }}" {% if name == column %}selected{% endif %}>{{ name }}</option>
+      {% endfor %}
+    </select>
+    <span class="segmented">
+      {% for name in modes %}
+      <label class="{% if name == mode %}active{% endif %}"><input type="radio" name="mode" value="{{ name }}" {% if name == mode %}checked{% endif %} onchange="this.form.requestSubmit()" />{{ name }}</label>
+      {% endfor %}
+    </span>
+    <input name="value" value="{{ value }}" aria-label="Value" placeholder="value" />
+    <button type="submit" class="button">Search</button>
+    {% if value %}<a href="?" class="button ghost" data-loading="Reading {{ table }}">Clear</a>{% endif %}
+  </form>
+</section>
+<section class="card">
+  <p class="secondary">{{ content.rows | length }} rows shown.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>{% for name in content.columns %}<th>{{ name }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in content.rows %}
+        <tr>{% for cell in row %}{% if cell is none %}<td class="null">NULL</td>{% else %}<td>{{ cell }}</td>{% endif %}{% endfor %}</tr>
+        {% else %}
+        <tr><td colspan="{{ content.columns | length }}" class="muted">No row matches.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

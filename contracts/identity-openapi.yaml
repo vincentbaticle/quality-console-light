@@ -1,0 +1,363 @@
+openapi: 3.1.0
+info:
+  title: Identity API (simulated Auth0)
+  version: 0.1.0
+paths:
+  /api/identity/mfa/verify:
+    post:
+      summary: Verify Code
+      description: Finish a sign-in with the code of the authenticator app, once per
+        code.
+      operationId: verify_code_api_identity_mfa_verify_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MfaCode'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/identity/mfa/enroll:
+    post:
+      summary: Enroll
+      description: 'Give the account a second factor: its secret is shown this once.'
+      operationId: enroll_api_identity_mfa_enroll_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Credentials'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TotpEnrollment'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/identity/health:
+    get:
+      summary: Health
+      description: Answer ``ok``.
+      operationId: health_api_identity_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+  /api/identity/signup:
+    post:
+      summary: Signup
+      description: Create an account and send the email that sets its password.
+      operationId: signup_api_identity_signup_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailOnly'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/identity/login:
+    post:
+      summary: Login
+      description: Sign in, count a wrong password, block at the limit, ask for a
+        code.
+      operationId: login_api_identity_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Credentials'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/identity/password-reset:
+    post:
+      summary: Password Reset
+      description: Send a reset link when the account exists, answer the same either
+        way.
+      operationId: password_reset_api_identity_password_reset_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailOnly'
+        required: true
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/identity/password:
+    post:
+      summary: Set Password
+      description: Set the password of the link's account, once.
+      operationId: set_password_api_identity_password_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewPassword'
+        required: true
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/identity/management/tickets/password-change:
+    post:
+      summary: Password Change Ticket
+      description: Give a password link without any email, as the Management API does.
+      operationId: password_change_ticket_api_identity_management_tickets_password_change_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          type: string
+          default: ''
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailOnly'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordTicket'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    Account:
+      properties:
+        user_id:
+          type: string
+          title: User Id
+        email:
+          type: string
+          title: Email
+      type: object
+      required:
+      - user_id
+      - email
+      title: Account
+      description: A created account.
+    Credentials:
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          minLength: 3
+          title: Email
+        password:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Password
+      type: object
+      required:
+      - email
+      - password
+      title: Credentials
+      description: What the sign-in form sends.
+    EmailOnly:
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          minLength: 3
+          title: Email
+      type: object
+      required:
+      - email
+      title: EmailOnly
+      description: What the sign-up and reset forms send.
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    Message:
+      properties:
+        detail:
+          type: string
+          title: Detail
+      type: object
+      required:
+      - detail
+      title: Message
+      description: A plain answer.
+    MfaCode:
+      properties:
+        mfa_token:
+          type: string
+          maxLength: 100
+          minLength: 10
+          title: Mfa Token
+        code:
+          type: string
+          pattern: ^\d{6}$
+          title: Code
+      type: object
+      required:
+      - mfa_token
+      - code
+      title: MfaCode
+      description: 'What the code form sends: the token of the pending sign-in, the
+        code.'
+    NewPassword:
+      properties:
+        ticket:
+          type: string
+          maxLength: 100
+          minLength: 10
+          title: Ticket
+        password:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Password
+      type: object
+      required:
+      - ticket
+      - password
+      title: NewPassword
+      description: 'What the set-password form sends: the ticket of the link, the
+        password.'
+    PasswordTicket:
+      properties:
+        ticket:
+          type: string
+          title: Ticket
+      type: object
+      required:
+      - ticket
+      title: PasswordTicket
+      description: 'What the Management API answers: the link, no email sent.'
+    Session:
+      properties:
+        user_id:
+          type: string
+          title: User Id
+        email:
+          type: string
+          title: Email
+        access_token:
+          type: string
+          title: Access Token
+      type: object
+      required:
+      - user_id
+      - email
+      - access_token
+      title: Session
+      description: A successful sign-in.
+    TotpEnrollment:
+      properties:
+        secret:
+          type: string
+          title: Secret
+        otpauth_uri:
+          type: string
+          title: Otpauth Uri
+      type: object
+      required:
+      - secret
+      - otpauth_uri
+      title: TotpEnrollment
+      description: 'A new second factor: shown once, to be kept where the tests read
+        it.'
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

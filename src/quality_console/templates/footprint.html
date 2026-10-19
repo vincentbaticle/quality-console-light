@@ -1,0 +1,521 @@
+{% extends "base.html" %}
+{% block title %}retro-footprint - Quality Console{% endblock %}
+{% block content %}
+<style>
+  progress { appearance: none; display: block; width: 100%; height: 10px; border: 0; border-radius: 999px; background: var(--bg-subtle); overflow: hidden; --fill: var(--brand); }
+  progress::-webkit-progress-bar { background: var(--bg-subtle); border-radius: 999px; }
+  progress::-webkit-progress-value { background: var(--fill); border-radius: 999px; transition: width .4s ease; }
+  progress::-moz-progress-bar { background: var(--fill); border-radius: 999px; }
+  progress.done { --fill: var(--positive); }
+  progress.failed { --fill: var(--negative); }
+  .progress-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; font-size: 13px; }
+  .progress-head strong { font-variant-numeric: tabular-nums; }
+  .tables-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px; }
+  .tbl { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: 8px; font: 600 12px var(--mono); color: var(--fg); background: var(--bg-surface); transition: color .4s, opacity .4s, border-color .4s; animation: pop .3s ease; }
+  .tbl .rank { flex: none; display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--fg); color: var(--bg-surface); font: 700 11px var(--font); }
+  .tbl.out .rank { display: none; }
+  .tbl .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tbl .what { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .tbl .meta { font: 500 11px var(--font); color: var(--fg-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #target { max-width: none; }
+  .tbl.out { color: var(--fg-muted); opacity: .4; border-color: var(--border); }
+  .tbl.found { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-soft); }
+  @keyframes pop { from { opacity: 0; transform: scale(.96); } }
+  .tabs { display: flex; gap: 2px; padding: 3px; margin-bottom: 14px; background: var(--bg-subtle); border-radius: 999px; overflow-x: auto; }
+  .tabs button { flex: 1; padding: 6px 12px; border: 0; border-radius: 999px; background: transparent; color: var(--fg-secondary); font: 600 12.5px var(--font); cursor: pointer; white-space: nowrap; }
+  .tabs button[aria-selected=true] { background: var(--bg-surface); color: var(--fg); box-shadow: var(--shadow); }
+  .tabs button:disabled { opacity: .4; cursor: default; }
+  .pulse-text { color: var(--fg-secondary); font-style: italic; animation: pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+  .chip { display: inline-block; padding: 1px 8px; margin: 2px; border-radius: 999px; font: 600 11px var(--mono); background: var(--bg-subtle); }
+  .chip.gone { text-decoration: line-through; color: var(--fg-muted); }
+  .chip.looping { background: var(--info-bg); color: var(--info); }
+  .verdict { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .ico { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; }
+  .ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  :root { --ico-front: #7c3aed; --ico-api: #2563eb; --ico-table: #b45309; --ico-sql: var(--fg-secondary); }
+  @media (prefers-color-scheme: dark) { :root { --ico-front: #c4b5fd; --ico-api: #93c5fd; --ico-table: #fbbf24; } }
+  .ico { color: var(--ico-sql); }
+  .ico.front { color: var(--ico-front); }
+  .ico.api, .ico.event { color: var(--ico-api); }
+  .ico.table { color: var(--ico-table); }
+  .path-hint { margin: -4px 0 10px; font-size: 12px; color: var(--fg-secondary); }
+  .path-title.check { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .check-result { margin: 12px 0 0; font-size: 13px; }
+  .check-result.ok { color: var(--positive); }
+  .check-result.warn { color: var(--warning); }
+  .check-result.pending { color: var(--fg-secondary); font-style: italic; }
+  .tbl .source { font: 500 11px var(--font); color: var(--fg-secondary); white-space: nowrap; }
+  .path { display: flex; flex-wrap: wrap; align-items: center; row-gap: 12px; }
+  .path + .path-title { margin-top: 18px; }
+  .path-title { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+  .stop { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg-surface); font: 600 12px var(--mono); color: var(--fg); animation: pop .3s ease; }
+  .stop.sql { border-style: dashed; }
+  .stop small { font: 500 11px var(--font); color: var(--fg-secondary); }
+  .stop .op { font: 700 10px var(--font); text-transform: uppercase; color: var(--fg-muted); }
+  .stop .op.write { color: var(--negative); }
+  .hop { flex: none; position: relative; width: 34px; height: 2px; margin: 0 4px 0 2px; background-image: linear-gradient(to right, var(--fg-muted) 50%, transparent 0); background-size: 8px 2px; animation: march .8s linear infinite; }
+  .hop.redirect { width: 70px; }
+  .hop.redirect::before { content: "redirect"; position: absolute; left: 0; right: 0; top: -15px; text-align: center; font: 600 10px var(--font); color: var(--fg-secondary); }
+  .hop::after { content: ""; position: absolute; right: -4px; top: -4px; border: 5px solid transparent; border-left-color: var(--fg-muted); border-right: 0; }
+  @keyframes march { to { background-position: 8px 0; } }
+  @media (prefers-reduced-motion: reduce) { .hop { animation: none; } }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .steps { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 6px; }
+  .steps li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .tab-pause { flex: none; align-self: center; padding: 0 8px; color: var(--fg-muted); font: 600 11.5px var(--font); white-space: nowrap; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .info-toggle summary { cursor: pointer; font-weight: 600; list-style: none; }
+  .info-toggle summary::-webkit-details-marker { display: none; }
+  .info-toggle summary::after { content: " Show"; font-weight: 500; text-decoration: underline; }
+  .info-toggle[open] summary::after { content: " Hide"; }
+  .info-toggle[open] summary { margin-bottom: 8px; }
+  .stages { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; padding: 0; }
+  .stages li { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; color: var(--fg-secondary); }
+  .stages li strong { color: var(--fg); }
+  .stages li.active { border-color: var(--info); background: var(--info-bg); color: var(--info); animation: pulse 1.5s ease-in-out infinite; }
+  .stages li.done { border-color: var(--positive); color: var(--positive); }
+  .stages li.failed { border-color: var(--negative); color: var(--negative); }
+  .stages li.waiting, .stages li.skipped { opacity: .6; }
+  #run-form .button:disabled, #run-form select:disabled { opacity: .5; cursor: not-allowed; }
+  .tbl.more, .tbl.fewer { justify-content: center; border-style: dashed; color: var(--fg-secondary); font: 600 12px var(--font); cursor: pointer; }
+  .stop.stack { border-width: 2px; cursor: pointer; box-shadow: 3px 3px 0 -1px var(--bg-surface), 3px 3px 0 0 var(--border-strong), 6px 6px 0 -1px var(--bg-surface), 6px 6px 0 0 var(--border-strong); margin-right: 6px; }
+  .stop.stack .unfold { font: 600 11px var(--font); color: var(--brand); text-decoration: underline; }
+  .stop.fold { border-style: dashed; color: var(--brand); font: 600 11px var(--font); cursor: pointer; }
+  .src { display: inline-block; padding: 0 6px; border-radius: 999px; font: 700 10px var(--font); text-transform: uppercase; }
+  .src.both { background: var(--positive-bg, var(--bg-subtle)); color: var(--positive); }
+  .src.named { background: var(--info-bg); color: var(--info); }
+  .src.counted { background: var(--warning-bg); color: var(--warning); }
+  .src.colleague { background: var(--bg-subtle); color: var(--fg-secondary); }
+  .stop.src-counted { border-color: var(--warning); border-style: dashed; }
+  .legend.sources { font-size: 12px; color: var(--fg-secondary); flex-direction: column; gap: 4px; }
+  .witness { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .witness summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+  .witness[open] summary { margin-bottom: 8px; }
+  .run-details summary { cursor: pointer; font-size: 15px; font-weight: 600; }
+  .run-details[open] summary { margin-bottom: 14px; }
+  .seen-rows { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+  .seen-rows li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .during { font-size: 12px; color: var(--fg-secondary); }
+  .stop.marker { background: var(--bg-subtle); border-style: dotted; color: var(--fg-secondary); }
+</style>
+<nav class="crumbs"><a href="/devx">DevX</a> / retro-footprint</nav>
+<div class="page-head">
+  <div>
+    <h1>retro-footprint {% if targets[target].demo %}<span class="badge mock">simulated</span>{% else %}<span class="badge live">real calls</span>{% endif %}</h1>
+    <p class="subtitle">Which fronts does one test open, which APIs do they call, and which tables of the company database do they, the APIs or the test itself read or write, when colleagues query the same database at the same minute?</p>
+  </div>
+  <form method="post" action="/devx/retro-footprint/run?target={{ target }}" class="filters" id="run-form">
+    <select name="target" aria-label="What to run" class="pill-select set" id="target" {% if experiment %}disabled{% endif %}>
+      <optgroup label="Real runs on the stack">{% for key, t in targets.items() if not t.demo %}<option value="{{ key }}" {% if key == target %}selected{% endif %}>{{ t.title }}</option>{% endfor %}</optgroup>
+      <optgroup label="Simulated examples, nothing is called">{% for key, t in targets.items() if t.demo %}<option value="{{ key }}" {% if key == target %}selected{% endif %}>{{ t.title }}</option>{% endfor %}</optgroup>
+    </select>
+    <button type="submit" class="button" id="run-button" {% if experiment %}disabled title="The analysis is running: wait for it to end"{% endif %}>{% if experiment %}Running…{% else %}▶ Run{% endif %}</button>
+  </form>
+</div>
+{% if busy %}<output class="banner failed" id="busy">Another real analysis was already running: here it is. Two at once would count each other's queries as a colleague's, so yours was not started; run it again once this one ends.</output>{% endif %}
+<details class="info info-toggle" id="how-it-works">
+  <summary>How retro-footprint works: the runs, the colleagues, the path, the trace and the coverage check</summary>
+  <p><strong>Run</strong> plays the chosen test for real on the stack, {{ runs_count }} times in two batches: {{ runs_per_batch }} runs in a row, a pause of {{ pause_seconds }} seconds, {{ runs_per_batch }} more runs (about a minute in all). A test is a few steps: pages of a front opened, API calls, SQL queries of its own. During each run, colleagues query some tables from their own connection ({{ colleagues[0] | join(", ") }} tables in the first batch, {{ colleagues[1] | join(", ") }} in the second), and one colleague loops their own test on {{ looping_tables }} tables during the whole first batch. The database side (<code>performance_schema</code> counters) sees every table read or written during a run, without knowing by whom. Keeping the tables seen in every run narrows the list: black, still candidate; light grey, ruled out. The looping colleague's tables survive the first batch; after the pause they are gone, and the second batch rules them out.</p>
+  <p>The counters are also read around each step, so each table is tied to the step that moved it: the <strong>path</strong> draws the test step by step, each front, API, query of the test and table joined by a dotted line, in the order they happened; a front the user was sent to by the previous one is reached by a <em>redirect</em>.</p>
+  <div class="legend"><span><span class="ico" data-icon="front"></span> a front (a page in the browser)</span><span><span class="ico" data-icon="api"></span> an API (or <span class="ico" data-icon="event"></span> a worker taking a message)</span><span><span class="ico" data-icon="sql"></span> a query of the test itself</span><span><span class="ico" data-icon="table"></span> a table</span></div>
+  <p>The trace of each API call of run 1 is read in Tempo while the next runs go on: the call starts its own trace (a <code>traceparent</code> header), so Tempo is asked for that trace id directly, the way you open a trace in Grafana from its id. A front sending traces (the Quality Console) is read the same way; a static front (the storefront, served by nginx) sends none. Every span carries that id, so the trace names for sure the APIs the call went through (the bank partner behind <code>/api/hello</code>, for instance) and the tables each one touched; the test's own SQL names its tables itself.</p>
+  <p>In short, two witnesses that do not see the same thing. <strong>The services</strong> write down what they do (the traces): they know who touched which table, but say nothing about what writes no notes. <strong>The database</strong> counts every table touched, by anyone, but cannot say who. The first gives the answer, the second checks that the first missed nothing.</p>
+  <p>So the page gives <strong>the answer</strong> from the traces (and the test's own SQL): what the test really went through, exact in one run. Under it, <strong>the coverage check</strong> compares it with what the database counters saw over the {{ runs_count }} runs: a table the database saw but no trace names means something untraced touched the database during the test. When no trace is found, the database's view becomes the answer, tables only. The <strong>Coverage check</strong> tab, under <strong>Run details</strong>, opens as soon as the runs end.</p><p>The number on each black table is the order in which the last run touched it; it is rewritten after each run, for the tables still candidate only. Under its name, each table says where it stands (<em>candidate</em>, <em>ruled out</em> or <em>confirmed</em> by the trace), whether the runs read it, wrote it or both, and in how many runs the database saw it move: a table seen in every run so far stays candidate, one missing from a single run is a colleague's.</p>
+  <p>Tables tagged <span class="badge live">live</span> are written by the storefront (orders, stock, invoices, payments, audit); <span class="badge static">static</span> ones are loaded once and only read.</p>
+  <p><strong>The final answer</strong> merges the two witnesses once the runs are over and the traces read: the path the traces draw, each table marked <em>named + counted</em> (both agree: sure), <em>named, not every run</em> (the traces name it, some run did not see it move: a cache, a branch) or <em>counted only, no trace</em> (the database counted it in every run, no trace names it: a trigger, an old service), placed after the step it moved during. Each witness stays folded under it, one click away.</p>
+  <p>On a path, items of one kind in a row (3 or more: tables read by one API, fronts one after the other) fold into one stop, drawn as a stack, saying how many and what they are; click it to unfold, <em>fold</em> to fold back. In the grid, every front, API and table says in how many runs it was seen; when there are too many, the ones seen in the most runs stay and the others fold into a <em>+N</em> tile, click it to show them, <em>Show fewer</em> to fold them back. To keep the page fast, at most 150 tiles are drawn, the page draws again only when a run ends, and hidden items are never built.</p>
+  <p>The two <strong>Demo</strong> tests are simulated: nothing is called, the runs are drawn from a fixed seed, so they look the same every time. <em>Too many items</em> goes through 5 fronts, a dozen APIs and almost every table, some steps played in only some runs. <em>Hard to tell for 7 runs</em> shares its minute with a nightly job reading 8 tables, 3 of them the test's own: until run 8 the job's tables are seen as often as the test's, then they drop out. <em>Many of a kind</em> sends the user through 10 fronts, then one export reads 29 tables while a trigger nobody traces writes the 30th: the stacks, and a table <em>counted only</em>.</p>
+</details>
+{% if experiment %}
+<section class="card" id="lab" data-experiment="{{ experiment }}" data-live="{{ live_tables | join(',') }}">
+  <div class="progress-head"><span id="phase" class="secondary">Starting</span><strong id="percent">0%</strong></div>
+  <progress id="progress" max="100" value="0" aria-label="Experiment progress"></progress>
+  <ol class="stages" id="stages" aria-label="Stages"></ol>
+</section>
+<section class="card">
+  <div class="section-head"><h2>Path of the test</h2><span class="hint" id="path-hint">Drawn after the first run.</span></div>
+  <div id="paths"></div>
+</section>
+<section class="card">
+  <div class="section-head"><h2>Fronts, APIs and tables used so far</h2><span class="hint" id="used-hint">Only the tables a run saw are listed, not the 30.</span></div>
+  <div class="tables-grid" id="grid"></div>
+</section>
+<section class="card">
+  <details class="run-details" id="run-details">
+  <summary>Run details</summary>
+  <div class="tabs" role="tablist" aria-label="Runs" id="tabs">
+    {% for n in range(1, runs_count + 1) %}{% if n == runs_per_batch + 1 %}<span class="tab-pause" id="tab-pause">⏸ {{ pause_seconds }} s</span>{% endif %}<button type="button" role="tab" aria-selected="false" data-tab="{{ n }}" disabled>Run {{ n }}</button>{% endfor %}
+    <button type="button" role="tab" aria-selected="false" data-tab="verdict" disabled>Coverage check</button>
+  </div>
+  <div id="panel" role="tabpanel"><p class="hint">The first run starts in a moment.</p></div>
+  </details>
+</section>
+<script>
+  (() => {
+    const lab = document.getElementById("lab");
+    const live = new Set(lab.dataset.live.split(","));
+    const url = `/devx/retro-footprint/experiments/${lab.dataset.experiment}`;
+    const tabs = [...document.querySelectorAll("#tabs [data-tab]")];
+    const panel = document.getElementById("panel");
+    let state = null;
+    let chosen = null;
+
+    const el = (tag, attrs = {}, ...children) => {
+      const node = document.createElement(tag);
+      Object.entries(attrs).forEach(([k, v]) => (k === "class" ? (node.className = v) : node.setAttribute(k, v)));
+      node.append(...children);
+      return node;
+    };
+    const kind = (table) => el("span", { class: `badge ${live.has(table) ? "live" : "static"}` }, live.has(table) ? "live" : "static");
+    const chips = (names, cls = "chip") => names.map((n) => el("span", { class: cls }, n));
+    const icon = (name) => { const node = el("span", { class: `ico ${name}`, "aria-hidden": "true" }); node.innerHTML = ICONS[name]; return node; };
+    const NAMES = { front: "Front", api: "API", event: "Worker", sql: "Query of the test", table: "Table" };
+
+    function stop(node) {
+      const parts = [icon(node.kind), node.label];
+      if (node.service && node.kind !== "table") parts.push(el("small", {}, node.service));
+      if (node.operation && node.kind === "table") parts.push(el("span", { class: `op ${node.operation.includes("write") ? "write" : "read"}` }, node.operation));
+      if (node.detail) parts.push(el("small", {}, node.detail));
+      return el("span", { class: `stop ${node.kind}`, title: `${NAMES[node.kind]}: ${node.label}${node.service ? ` (${node.service})` : ""}` }, ...parts);
+    }
+    const hop = (node) => el("span", { class: `hop ${node.operation === "redirect" ? "redirect" : ""}`, "aria-hidden": "true" });
+
+    const distinct = (nodes) => nodes.filter((n, i) => i === 0 || n.kind !== nodes[i - 1].kind || n.label !== nodes[i - 1].label);
+
+    const LIMITS = { front: 4, api: 6, event: 6, table: 10 };
+    const PLURALS = { front: "fronts", api: "APIs", table: "tables" };
+    const opened = { grid: false };
+
+    function fit(items, limit, open) {
+      if (open || items.length <= limit) return { kept: items, hidden: [] };
+      const best = new Set([...items].sort((a, b) => b.runs - a.runs).slice(0, limit));
+      return { kept: items.filter((i) => best.has(i)), hidden: items.filter((i) => !best.has(i)) };
+    }
+    const runsText = (n) => `${n}/${state.runs.length} runs`;
+    const fewest = (items) => Math.max(...items.map((i) => i.runs));
+
+    const MAX_DRAWN = 150;
+    let counts = new Map();
+    function count() {
+      counts = new Map();
+      state.runs.forEach((r) => r.hits.forEach((h) => {
+        const c = counts.get(h.table) ?? { runs: 0, reads: false, writes: false };
+        counts.set(h.table, { runs: c.runs + 1, reads: c.reads || h.reads > 0, writes: c.writes || h.writes > 0 });
+      }));
+    }
+    const seenIn = (table) => counts.get(table)?.runs ?? 0;
+    function access(table) {
+      const c = counts.get(table);
+      if (c?.reads && c?.writes) return "read + write";
+      return c?.writes ? "write" : "read";
+    }
+
+    const tableCount = (n) => (n === 0 ? "no table" : n === 1 ? "1 table" : `${n} tables`);
+
+    function coverage() {
+      if (!state.runs_over) return { kind: "pending", text: `Check pending: run ${state.runs.length} of ${state.runs_total}, colleagues still blur what the database saw.` };
+      if (!state.checked) return { kind: "pending", text: state.done ? "No trace found: nothing to check, the database is the only witness." : "The runs are over; the answer is still being read from the traces." };
+      const exact = new Set(state.exact);
+      const found = new Set(state.found);
+      const colleagues = new Set(state.final.filter((n) => n.source === "colleague").map((n) => n.label));
+      const extra = state.found.filter((t) => !exact.has(t) && !colleagues.has(t));
+      const missing = state.exact.filter((t) => !found.has(t));
+      const lines = [];
+      if (extra.length) lines.push(`⚠ Seen by the database in every run, named by nothing in the answer: ${extra.join(", ")}. Something without traces touched them during the test (a service not instrumented, a trigger): no SQL span off the test's path explains them.`);
+      if (colleagues.size) lines.push(`ℹ Seen by the database in every run, but the SQL spans of the run windows show only colleagues on them: ${[...colleagues].join(", ")}. Most likely not the test's.`);
+      if (missing.length) lines.push(`ℹ In the answer, but ruled out by at least one run: ${missing.join(", ")}. The test touches it only on some calls (a cache, a branch).`);
+      if (!lines.length) return { kind: "ok", text: `✓ Covered: the database saw ${tableCount(state.found.length)} in every run, exactly the ones the answer names. Nothing untraced touched the database during the test.` };
+      return { kind: "warn", text: lines.join(" ") };
+    }
+
+    const STACK_AT = 3;
+    const NAMES_IN_TITLE = 40;
+    const SOURCES = {
+      both: ["named + counted", "Named by the traces and counted by the database in every run: sure."],
+      named: ["named, not every run", "Named by the traces, but some run did not see it move: the test touches it only sometimes (a cache, a branch)."],
+      counted: ["counted only, no trace", "Counted by the database in every run, named by no trace, and no SQL span off the test's path explains it: something of the test sending no trace touched it (a trigger, an old service)."],
+      colleague: ["likely a colleague", "Counted by the database in every run, named by no trace, and the SQL spans of the run windows show only services off the test's path touching it: someone busy through every run, not the test."],
+    };
+    const openStacks = new Set();
+    const nature = (n) => (n.kind === "event" ? "api" : n.kind);
+    const listed = (names) => (names.length > NAMES_IN_TITLE ? `${names.slice(0, NAMES_IN_TITLE).join(", ")} and ${names.length - NAMES_IN_TITLE} more` : names.join(", "));
+
+    function stack(nodes, scope) {
+      const out = [];
+      for (let i = 0; i < nodes.length;) {
+        let j = i;
+        while (j < nodes.length && nature(nodes[j]) === nature(nodes[i])) j++;
+        const run = nodes.slice(i, j);
+        const key = `${scope}:${i}:${nature(nodes[i])}`;
+        if (run.length < STACK_AT) out.push(...run);
+        else if (openStacks.has(key)) out.push(...run, { kind: "fold", key, of: nature(nodes[i]), count: run.length });
+        else out.push({ kind: "stack", key, of: nature(nodes[i]), items: run, operation: run[0].operation });
+        i = j;
+      }
+      return out;
+    }
+    function stackSummary(node) {
+      const count = (test) => node.items.filter(test).length;
+      if (node.of === "table" && node.items.every((n) => !n.operation)) return "with the services that sent their SQL";
+      if (node.of === "table") {
+        const parts = [`${count((n) => n.operation === "read")} read`, `${count((n) => (n.operation || "").includes("write"))} written`];
+        Object.keys(SOURCES).forEach((s) => { const n = count((i) => i.source === s); if (n && s !== "both") parts.push(`${n} ${SOURCES[s][0]}`); });
+        return parts.join(" · ");
+      }
+      if (node.of === "front") return `${count((n) => n.operation === "redirect")} reached by a redirect`;
+      return `${new Set(node.items.map((n) => n.service)).size} services`;
+    }
+    const stackStop = (node) => el("button", { type: "button", class: `stop stack ${node.of}`, "data-stack": node.key, title: `${listed(node.items.map((n) => n.label))}. Click to unfold.` },
+      icon(node.of), el("strong", {}, `${node.items.length} ${PLURALS[node.of]}`), el("small", {}, stackSummary(node)), el("span", { class: "unfold" }, "unfold"));
+    const foldStop = (node) => el("button", { type: "button", class: "stop fold", "data-fold": node.key, title: "Fold them back into one stop" }, `fold the ${node.count} ${PLURALS[node.of]}`);
+    function sourced(node) {
+      const shown = stop(node);
+      const source = SOURCES[node.source];
+      if (source) { shown.classList.add(`src-${node.source}`); shown.append(el("span", { class: `src ${node.source}`, title: source[1] }, source[0])); }
+      return shown;
+    }
+    function drawn(nodes, scope, hops = true) {
+      const parts = stack(distinct(nodes), scope).flatMap((n, i) => {
+        const shown = n.kind === "stack" ? stackStop(n) : n.kind === "fold" ? foldStop(n) : sourced(n);
+        return i && hops ? [hop(n), shown] : [shown];
+      });
+      return el("div", { class: "path" }, ...parts);
+    }
+    document.getElementById("paths").addEventListener("click", (event) => {
+      const unfold = event.target.closest("[data-stack]");
+      const fold = event.target.closest("[data-fold]");
+      if (unfold) openStacks.add(unfold.dataset.stack);
+      else if (fold) openStacks.delete(fold.dataset.fold);
+      else return;
+      drawPaths();
+    });
+
+    function seenRows(run) {
+      const found = new Set(state.found);
+      const rows = run.steps.flatMap((s, i) => {
+        if (s.outcome === "skipped") return [];
+        const marker = stop({ kind: s.kind, label: s.title });
+        marker.classList.add("marker");
+        marker.title = "A step of the test, shown as a time marker: the database does not see it";
+        const tables = s.tables.filter((t) => found.has(t)).map((t) => ({ kind: "table", label: t, operation: access(t), detail: `seen in ${seenIn(t)} of ${state.runs.length} runs` }));
+        const seen = tables.length ? drawn(tables, `rows:${i}`, false) : el("span", { class: "during" }, "no table moving in every run");
+        return [el("li", {}, el("span", { class: "during" }, "While"), marker, el("span", { class: "during" }, "ran, the database saw"), seen)];
+      });
+      return el("ul", { class: "seen-rows" }, ...rows);
+    }
+
+    const witnessOpen = { traces: null, database: null };
+    function witness(key, title, hint, body) {
+      const summary = el("summary", {}, title);
+      const box = el("details", { class: "witness" }, summary, el("p", { class: "path-hint" }, hint), ...body);
+      box.open = witnessOpen[key] ?? false;
+      summary.addEventListener("click", () => { witnessOpen[key] = !box.open; });
+      return box;
+    }
+
+    function drawPaths() {
+      const last = state.runs[state.runs.length - 1];
+      if (!last) return;
+      const measured = seenRows(last);
+      const check = coverage();
+      const parts = [];
+      if (!state.traced_steps) {
+        parts.push(el("p", { class: "path-title" }, "The answer: named by the test itself"),
+          el("p", { class: "path-hint" }, "Nothing in this test sends traces: its own SQL names its tables. Exact, whatever colleagues do."), drawn(state.path, "answer"));
+      } else if (state.done && !state.checked) {
+        parts.push(el("p", { class: "path-title" }, "The answer: what the database saw (no trace found)"),
+          el("p", { class: "path-hint" }, `Without traces, the database's own count is the only witness: for each step of the test (a time marker, the database does not see it), the tables that moved while it ran, in all ${state.runs.length} runs. Tables only: the APIs behind a call stay unknown.`), measured);
+        document.getElementById("paths").replaceChildren(...parts);
+        return;
+      } else if (state.final.length) {
+        parts.push(el("p", { class: "path-title" }, "The final answer: the traces and the database's count, merged"),
+          el("p", { class: "path-hint" }, "Every front, API and table the test went through, in order. The traces say who did what; the database's count, over the same minutes, adds what no trace names and says how sure each table is."),
+          el("div", { class: "legend sources" }, ...Object.entries(SOURCES).map(([key, [label, help]]) => el("span", {}, el("span", { class: `src ${key}` }, label), help))),
+          drawn(state.final, "final"), el("p", { class: `check-result ${check.kind}` }, check.text));
+      } else {
+        parts.push(el("p", { class: "path-title" }, "The final answer: the traces and the database's count, merged"),
+          el("p", { class: "pulse-text" }, state.runs_over ? (state.checked ? state.window.phase : state.trace_phase) : `Comes once the ${state.runs_total} runs are over and the traces read: run ${state.runs.length} of ${state.runs_total}. Meanwhile, each witness below on its own.`));
+      }
+      const pending = !state.final.length;
+      parts.push(
+        witness("traces", "Witness 1: what the services say they did (their traces)",
+          "While the test runs, each service writes down what it does: 'I, hello-api, read customers'. These notes (the trace of run 1, read in Tempo) give every front and API, the ones behind the test's own calls included, and who touched which table. Exact, colleagues or not, but blind to anything that writes no notes.",
+          state.checked ? [drawn(state.path, "traces")] : [el("p", { class: "pulse-text" }, state.trace_phase)]),
+        witness("database", "Witness 2: what the database counted",
+          `The database counts every table read or written, by anyone, but not who did it. The steps in grey are only time markers, the database does not see them: for each step, the tables that moved while it ran and in every run so far (after run ${last.number} of ${state.runs_total}).`,
+          [measured, ...(pending ? [el("p", { class: `check-result ${check.kind}` }, check.text)] : [])]),
+        witness("window", "Witness 3: the SQL spans of each run window (read in Tempo, the trace store)",
+          "Tempo is the store that keeps every trace the services send (the Grafana stack of the observability service). Once the runs are over, it is asked, run window by run window, for every SQL span on the company database, whoever sent it: colleagues included. Matched with the database count, it says who touched each table; the final answer shows it under each table.",
+          state.window.tables.length ? [drawn(state.window.tables.map((w) => ({ kind: "table", label: w.table, detail: `${w.services.join(", ")} · ${w.runs}/${state.runs.length} windows` })), "window", false)] : [el("p", { class: state.window.state === "active" ? "pulse-text" : "path-hint" }, state.window.phase)]));
+      document.getElementById("paths").replaceChildren(...parts);
+      document.getElementById("path-hint").textContent = `Items of one kind in a row fold into one stop from ${STACK_AT} on: click it to unfold.`;
+    }
+
+    const MARKS = { waiting: "○", active: "◐", done: "✓", skipped: "-", failed: "✕" };
+    function drawStages() {
+      const runs = { label: "Runs", detail: `${state.runs.length} of ${state.runs_total}`, state: state.runs_over ? "done" : "active" };
+      let traces = { label: "Traces", detail: "read once run 1 is over", state: "waiting" };
+      if (!state.traced_steps) traces = { label: "Traces", detail: "nothing traced", state: "skipped" };
+      else if (state.checked) traces = { label: "Traces", detail: "read", state: "done" };
+      else if (state.done) traces = { label: "Traces", detail: "none found", state: "failed" };
+      else if (state.runs.length) traces = { label: "Traces", detail: "reading", state: "active" };
+      const windows = { label: "SQL per run window", detail: state.window.phase, state: state.window.state };
+      const final = { label: "Final answer", detail: state.done ? "ready" : "once every witness spoke", state: state.done && !state.error ? "done" : "waiting" };
+      document.getElementById("stages").replaceChildren(...[runs, traces, windows, final].map((s) =>
+        el("li", { class: s.state, title: s.detail }, el("span", { "aria-hidden": "true" }, MARKS[s.state] ?? "○"), el("strong", {}, s.label), s.detail)));
+    }
+
+    function drawProgress() {
+      const bar = document.getElementById("progress");
+      bar.classList.toggle("done", state.done && !state.error);
+      bar.classList.toggle("failed", Boolean(state.error));
+      bar.value = state.progress;
+      document.getElementById("percent").textContent = `${state.progress}%`;
+      document.getElementById("phase").textContent = state.error ? `${state.phase}: ${state.error}` : state.phase;
+    }
+
+    function drawGrid() {
+      const found = new Set(state.found);
+      const exact = new Set(state.exact);
+      const last = state.runs[state.runs.length - 1];
+      const ranks = new Map((last ? last.order.filter((t) => found.has(t)) : []).map((t, i) => [t, i + 1]));
+      const used = [...state.used].sort((a, b) => (ranks.get(a) ?? 99) - (ranks.get(b) ?? 99));
+      const tile = (kind, label, meta) => el("span", { class: `tbl ${kind}`, title: `${NAMES[kind]}: ${label} · ${meta}` }, icon(kind),
+        el("span", { class: "what" }, el("span", { class: "name" }, label), el("span", { class: "meta" }, meta)));
+      const fronts = state.fronts.map((f) => ({ kind: "front", label: f.label, runs: f.runs,
+        make: () => tile("front", f.label, `${f.operation === "redirect" ? "after a redirect" : "opened by the test"} · ${runsText(f.runs)}`) }));
+      const apis = state.apis.map((a) => ({ kind: "api", label: a.label, runs: a.runs,
+        make: () => tile(a.kind, a.label, `${a.service === "the test" ? "called by the test" : `${a.service}, in the trace`} · ${runsText(a.runs)}`) }));
+      const tables = used.map((t) => ({ kind: "table", label: t, runs: seenIn(t), make: () => tableTile(t) }));
+      function tableTile(t) {
+        const confirmed = state.done && found.has(t) && exact.has(t);
+        const rank = ranks.get(t);
+        const badge = el("span", { class: "rank", title: "Order in which the last run touched the tables still candidate" }, rank ?? "");
+        const status = !found.has(t) ? "ruled out" : confirmed ? "confirmed" : "candidate";
+        const meta = `${status} · ${access(t)} · ${seenIn(t)}/${state.runs.length} runs`;
+        return el("span", { class: `tbl ${found.has(t) ? "" : "out"} ${confirmed ? "found" : ""}`, "data-table": t, title: `${t}: ${meta}` }, badge, icon("table"),
+          el("span", { class: "what" }, el("span", { class: "name" }, t), el("span", { class: "meta" }, meta)), kind(t));
+      }
+      let folded = false;
+      let drawnCount = 0;
+      const crowded = (items) => {
+        if (!items.length) return [];
+        const kindOf = items[0].kind;
+        const { kept, hidden } = fit(items, LIMITS[kindOf], opened.grid);
+        folded ||= hidden.length > 0 || (opened.grid && items.length > LIMITS[kindOf]);
+        const out = [];
+        const room = Math.max(MAX_DRAWN - drawnCount, 0);
+        out.push(...kept.slice(0, room).map((i) => i.make()));
+        drawnCount += Math.min(kept.length, room);
+        if (kept.length > room) out.push(el("span", { class: "tbl more", title: "Not drawn, to keep the page fast" }, `${kept.length - room} more ${PLURALS[kindOf]} not drawn`));
+        if (hidden.length) out.push(el("button", { type: "button", class: "tbl more", title: hidden.map((i) => i.label).join(", ") }, `+${hidden.length} ${PLURALS[kindOf]}, ${runsText(fewest(hidden))} or fewer · show`));
+        return out;
+      };
+      const grid = [...crowded(fronts), ...crowded(apis), ...crowded(tables)];
+      if (opened.grid && folded) grid.push(el("button", { type: "button", class: "tbl fewer" }, "Show fewer"));
+      document.getElementById("grid").replaceChildren(...grid);
+      document.getElementById("used-hint").textContent = `${state.fronts.length} fronts, ${state.apis.length} APIs; ${state.used.length} tables seen by at least one run, ${state.found.length} seen by every run, numbered in the order the last run touched them. Each says in how many runs it was seen.`;
+    }
+    document.getElementById("grid").addEventListener("click", (event) => {
+      if (event.target.closest(".tbl.more")) opened.grid = true;
+      else if (event.target.closest(".tbl.fewer")) opened.grid = false;
+      else return;
+      drawGrid();
+    });
+
+    function drawRun(run) {
+      const looping = new Set(run.number <= state.looping_runs ? state.looping : []);
+      const hits = [...run.hits].sort((a, b) => run.order.indexOf(a.table) - run.order.indexOf(b.table));
+      const rows = hits.map((h) => el("tr", {},
+        el("td", { class: "num" }, run.order.indexOf(h.table) + 1),
+        el("td", {}, h.table), el("td", {}, kind(h.table)), el("td", { class: "num" }, h.reads), el("td", { class: "num" }, h.writes),
+        el("td", {}, run.candidates.includes(h.table) ? "still candidate" : "already ruled out")));
+      const steps = run.steps.map((s) => el("li", {}, stop({ kind: s.kind, label: s.title }), el("span", { class: "secondary" }, `${s.outcome}, ${s.tables.length} tables moved meanwhile:`), ...chips(s.tables)));
+      const colleagues = run.colleagues.map((t) => el("span", { class: `chip ${looping.has(t) ? "looping" : ""}`, title: looping.has(t) ? "The looping colleague" : "" }, t));
+      return [
+        el("h3", {}, `Run ${run.number} (batch ${run.batch}): ${run.hits.length} tables seen, ${run.candidates.length} still candidate`),
+        el("ul", { class: "steps" }, ...steps),
+        el("p", { class: "hint" }, `${run.duration_ms} ms. # is the order in which the database saw each table move during the run. Colleagues queried ${run.colleagues.length} tables meanwhile${looping.size ? `, in blue the colleague looping during runs 1 to ${state.looping_runs}` : ""}: `, ...colleagues),
+        el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, el("tr", {}, ...["#", "Table", "Kind", "Reads", "Writes", "After this run"].map((h) => el("th", {}, h)))), el("tbody", {}, ...rows))),
+        el("p", {}, run.dropped.length ? "Ruled out by this run: " : "Nothing ruled out by this run.", ...chips(run.dropped, "chip gone")),
+      ];
+    }
+
+    function drawVerdict() {
+      const accesses = [...state.traced, ...state.sql].map((a) => el("span", { class: "chip" }, `${a.service} · ${a.table} · ${a.operation}`));
+      const source = state.demo ? "the simulated traces" : state.trace_ids.length ? `the trace${state.trace_ids.length > 1 ? "s" : ""} ${state.trace_ids.map((t) => t.slice(0, 12)).join(", ")}` : "the test's own SQL";
+      const title = state.checked ? `The answer, named by ${source} (${tableCount(state.exact.length)})` : state.done ? "No trace found" : "The answer, from the traces of run 1";
+      const waiting = state.done ? [] : [el("p", { class: "pulse-text" }, state.trace_phase)];
+      const check = coverage();
+      return [el("div", { class: "verdict" },
+        el("div", {}, el("h3", {}, title), ...waiting, ...accesses),
+        el("div", {}, el("h3", {}, `Seen by the database in every run (${state.found.length})`), ...chips(state.found))),
+        el("p", { class: `check-result ${check.kind}`, style: "margin-top:12px" }, check.text)];
+    }
+
+    function drawTabs() {
+      const ready = state.runs.length;
+      tabs.forEach((tab) => { tab.disabled = tab.dataset.tab === "verdict" ? !state.runs_over : Number(tab.dataset.tab) > ready; });
+      const current = chosen ?? (state.runs_over ? "verdict" : String(Math.max(ready, 1)));
+      tabs.forEach((tab) => tab.setAttribute("aria-selected", String(tab.dataset.tab === current)));
+      const run = state.runs[Number(current) - 1];
+      if (current === "verdict") panel.replaceChildren(...drawVerdict());
+      else if (run) panel.replaceChildren(...drawRun(run));
+      const pause = document.getElementById("tab-pause");
+      if (pause && state.pause_left > 0 && ready === {{ runs_per_batch }}) pause.textContent = `⏸ ${state.pause_left} s`;
+      else if (pause && ready > {{ runs_per_batch }}) pause.textContent = "⏸ done";
+    }
+
+    tabs.forEach((tab) => tab.addEventListener("click", () => { chosen = tab.dataset.tab; drawTabs(); }));
+
+    function unlock() {
+      const button = document.getElementById("run-button");
+      document.getElementById("target").disabled = false;
+      button.disabled = false;
+      button.removeAttribute("title");
+      button.textContent = "▶ Run";
+    }
+    let lastDrawn = "";
+    let lastTabs = "";
+    async function poll() {
+      const response = await fetch(url);
+      if (!response.ok) { document.getElementById("phase").textContent = "This experiment is no longer kept: run it again."; unlock(); return; }
+      state = await response.json();
+      count();
+      drawProgress();
+      drawStages();
+      const changed = [state.runs.length, state.checked, state.done, state.trace_phase, state.window.state].join("|");
+      if (changed !== lastDrawn) { lastDrawn = changed; drawPaths(); drawGrid(); }
+      const tabsKey = `${changed}|${state.pause_left}`;
+      if (tabsKey !== lastTabs) { lastTabs = tabsKey; drawTabs(); }
+      if (!state.done) setTimeout(poll, 700);
+      else unlock();
+    }
+    poll();
+  })();
+</script>
+{% else %}
+<section class="card empty"><div><div class="big">🔎</div><p>Pick a test, then <strong>Run</strong>.</p></div></section>
+{% endif %}
+<script>
+  const ICONS = {
+    front: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><circle cx="6" cy="6.5" r=".5"/><circle cx="8.5" cy="6.5" r=".5"/></svg>',
+    api: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
+    event: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+    sql: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>',
+    table: '<svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>',
+  };
+  document.querySelectorAll("[data-icon]").forEach((node) => { node.classList.add(node.dataset.icon); node.innerHTML = ICONS[node.dataset.icon]; });
+  document.getElementById("target").addEventListener("change", (event) => {
+    document.getElementById("run-form").action = `/devx/retro-footprint/run?target=${encodeURIComponent(event.target.value)}`;
+  });
+  document.getElementById("run-form").addEventListener("submit", (event) => {
+    const button = document.getElementById("run-button");
+    if (button.disabled) { event.preventDefault(); return; }
+    button.disabled = true;
+    button.textContent = "Starting…";
+  });
+</script>
+{% endblock %}

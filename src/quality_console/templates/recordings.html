@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Recorded examples - Quality Console{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/tools">Tools</a> / Recorded examples</nav>
+<div class="page-head">
+  <div>
+    <h1>Recorded examples</h1>
+    <p class="subtitle">What the captures recorded from real calls and real events, and the tests that replay it.</p>
+  </div>
+</div>
+<div class="info">
+  <p>A hand-written example is a guess about what a neighbour says. A recording asks the real one, keeps the transcript in a <strong>journal</strong> (<code>capture/</code>, never committed), then a <strong>merge</strong> writes the examples the tests read (<code>contracts/</code>, committed, reviewed in a diff). The tests then run against testcontainers neighbours fed with those examples: Microcks replays the partner's answers, and the events of the code are compared with the recorded ones.</p>
+  <p><strong>Prism or Microcks?</strong> Not rivals, two jobs. The <strong>contract mocks</strong> (Prism, the 🎭 links of <a href="/tools/apis">API docs</a>) answer any contract with the same example, for anyone trying an API by hand. <strong>Microcks</strong> serves the recorded examples of this page to the tests, the answer picked by request (<code>ada</code> gets ada's balance, an unknown account its <code>404</code>).</p>
+  <p>This page only reads. To record again, run the commands of each card in a terminal, then reload.</p>
+</div>
+{% for rec in recordings %}
+<section class="card" id="{{ rec.key }}">
+  <div class="section-head">
+    <div>
+      <h3>{{ rec.title }} <span class="badge type">{{ rec.kind }}</span></h3>
+      <p>{{ rec.purpose }}</p>
+    </div>
+    <span class="secondary">{% if rec.captured_at %}recorded {{ rec.captured_at[:16] | replace("T", " ") }} UTC{% else %}<span class="badge unknown">not recorded on this machine</span>{% endif %}</span>
+  </div>
+  <dl class="kv">
+    <dt>Recorded from</dt><dd>{{ rec.source }}</dd>
+    <dt>Journal</dt><dd class="mono">{{ rec.journal }}</dd>
+    <dt>Examples</dt><dd class="mono">{{ rec.examples_file }}</dd>
+    <dt>Replayed by</dt><dd>{% for test in rec.replayed_by %}<span class="mono">{{ test }}</span>{% if not loop.last %}, {% endif %}{% endfor %}</dd>
+    <dt>Record again</dt><dd>{% for command in rec.commands %}<code>{{ command }}</code>{% if not loop.last %} then {% endif %}{% endfor %}</dd>
+  </dl>
+  <h2 style="margin-top:16px">Journal, {{ rec.entries | length }} entries</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Story</th>{% if rec.kind == "events" %}<th>After</th><th>Order placed</th><th>Event published</th>{% else %}<th>Request</th><th>Answer</th>{% endif %}</tr></thead>
+      <tbody>
+        {% for entry in rec.entries %}
+        <tr><td><strong>{{ entry.label }}</strong></td>{% if rec.kind == "events" %}<td>{{ entry.after_ms }} ms</td>{% endif %}<td class="mono wrap">{{ entry.sent }}</td><td class="mono wrap">{{ entry.received }}</td></tr>
+        {% else %}
+        <tr><td colspan="4" class="muted">No journal here: run the commands above. The committed examples below still drive the tests.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <h2 style="margin-top:16px">Examples the tests replay</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Example</th><th>Origin</th><th>Content</th></tr></thead>
+      <tbody>
+        {% for example in rec.examples %}
+        <tr><td><strong>{{ example.name }}</strong></td><td><span class="badge {% if 'hand' in example.origin %}skipped{% else %}success{% endif %}">{{ example.origin }}</span></td><td class="mono wrap">{{ example.content }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endfor %}
+{% endblock %}

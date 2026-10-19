@@ -1,0 +1,220 @@
+openapi: 3.1.0
+info:
+  title: Storefront API
+  version: 0.1.0
+paths:
+  /api/products:
+    get:
+      summary: Products
+      description: The products an order may hold, with their stock.
+      operationId: products_api_products_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  additionalProperties: true
+                  type: object
+                type: array
+                title: Response Products Api Products Get
+  /api/orders:
+    post:
+      summary: Place Order
+      description: Write the order as pending and start its workflow.
+      operationId: place_order_api_orders_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderRequest'
+        required: true
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderAccepted'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/orders/workflows/{workflow_id}:
+    get:
+      summary: Workflow
+      description: Where a workflow stands, step by step, and its order's status.
+      operationId: workflow_api_orders_workflows__workflow_id__get
+      parameters:
+      - name: workflow_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workflow Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Workflow Api Orders Workflows  Workflow Id  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/health:
+    get:
+      summary: Health
+      description: Answer ``ok`` once Redis answers a ping.
+      operationId: health_api_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /api/hello:
+    get:
+      summary: Hello
+      description: Greet a customer by first name, count its visits, add its balance.
+      operationId: hello_api_hello_get
+      parameters:
+      - name: username
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          title: Username
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Greeting'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    Greeting:
+      properties:
+        message:
+          type: string
+          title: Message
+        visits:
+          type: integer
+          title: Visits
+        balance_cents:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Balance Cents
+      type: object
+      required:
+      - message
+      - visits
+      - balance_cents
+      title: Greeting
+      description: Body of a successful hello.
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    Health:
+      properties:
+        status:
+          type: string
+          title: Status
+      type: object
+      required:
+      - status
+      title: Health
+      description: Body of the health probe.
+    OrderAccepted:
+      properties:
+        workflow_id:
+          type: string
+          title: Workflow Id
+        order_id:
+          type: integer
+          title: Order Id
+        status:
+          type: string
+          title: Status
+      type: object
+      required:
+      - workflow_id
+      - order_id
+      - status
+      title: OrderAccepted
+      description: 'Answer to a placed order: where to follow it.'
+    OrderRequest:
+      properties:
+        username:
+          type: string
+          maxLength: 50
+          minLength: 1
+          title: Username
+        sku:
+          type: string
+          maxLength: 30
+          minLength: 1
+          title: Sku
+        quantity:
+          type: integer
+          maximum: 5.0
+          minimum: 1.0
+          title: Quantity
+      type: object
+      required:
+      - username
+      - sku
+      - quantity
+      title: OrderRequest
+      description: What the order form sends.
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

@@ -1,0 +1,49 @@
+openapi: 3.0.3
+info:
+  title: Bank Partner
+  description: Secondary Microcks artifact, the examples replayed for the operations of bank-partner-openapi.yaml.
+    The 200 examples are captured from the partner (mise run capture:examples, then mise run capture:merge).
+    The 404 example unknown-account is written by hand, since a capture only records the success stories,
+    and the merge never touches it.
+  version: 1.0.0
+paths:
+  /balance:
+    get:
+      operationId: getBalance
+      parameters:
+      - name: username
+        in: query
+        required: true
+        schema:
+          type: string
+        examples:
+          unknown-account:
+            value: zoe
+          ada:
+            value: ada
+          grace:
+            value: grace
+      responses:
+        '200':
+          description: The balance of the account held for that username.
+          content:
+            application/json:
+              examples:
+                ada:
+                  value:
+                    username: ada
+                    balance_cents: 125075
+                    currency: EUR
+                grace:
+                  value:
+                    username: grace
+                    balance_cents: 980040
+                    currency: EUR
+        '404':
+          description: The bank holds no account for that username.
+          content:
+            application/json:
+              examples:
+                unknown-account:
+                  value:
+                    detail: No account for this username

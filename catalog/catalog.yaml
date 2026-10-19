@@ -1,0 +1,346 @@
+about: >-
+  The software catalog of MyCompany, as code. Domains group systems, a system is
+  made of components, components provide or consume APIs and depend on resources,
+  and every one of them is owned by a team. Test metadata (system, product,
+  component, group, business_capability) must name entries of this file, which
+  tests/unit/test_metadata_catalog.py checks. After an edit, `mise run catalog:sql`
+  regenerates db/05-catalog.sql, the database the Quality Console and its tools read.
+
+domains:
+  - name: retail
+    title: Retail
+    description: Everything a customer touches, from the welcome page to the paid order.
+  - name: identity
+    title: Identity
+    description: Who a customer is, how they sign in, and the emails that come with it.
+  - name: banking
+    title: Banking
+    description: Money held for the customers by a partner bank the company does not own.
+  - name: engineering
+    title: Engineering productivity
+    description: The tools the teams use to build, test and watch the product.
+
+business_capabilities:
+  - name: engage
+    title: Engage
+    description: Recognise a customer and make them come back.
+  - name: sell
+    title: Sell
+    description: Turn a basket into a paid order.
+  - name: protect
+    title: Protect
+    description: Keep accounts and data safe.
+  - name: operate
+    title: Operate
+    description: Run, observe and test the platform.
+
+teams:
+  - name: storefront-squad
+    title: Storefront squad
+    description: Builds the storefront and the customer welcome.
+    jira_project: STORE
+  - name: checkout-squad
+    title: Checkout squad
+    description: Owns orders, stock, invoices and payments.
+    jira_project: CHK
+  - name: identity-squad
+    title: Identity squad
+    description: Owns sign-in, accounts and the identity emails.
+    jira_project: IDN
+  - name: partners-squad
+    title: Partners squad
+    description: Owns the integrations with third parties, the bank first.
+    jira_project: PTN
+  - name: data-squad
+    title: Data squad
+    description: Owns the files the company exchanges through buckets.
+    jira_project: DATA
+  - name: qa-core
+    title: QA core
+    description: Owns the quality platform, its console and its test tooling.
+    jira_project: QAC
+  - name: qa-web
+    title: QA web
+    description: Owns the end-to-end and acceptance tests of the storefront.
+    jira_project: QWEB
+
+systems:
+  - name: storefront
+    title: Storefront
+    domain: retail
+    owner: storefront-squad
+    description: The customer-facing web application and the API behind it.
+  - name: orders
+    title: Orders
+    domain: retail
+    owner: checkout-squad
+    description: The event-driven workflow that takes an order from placed to paid.
+  - name: identity
+    title: Identity
+    domain: identity
+    owner: identity-squad
+    description: A simulated Auth0 tenant, its users and the emails it sends.
+  - name: bank
+    title: Bank
+    domain: banking
+    owner: partners-squad
+    description: The partner bank and our client of its core banking API.
+  - name: data-exchange
+    title: Data exchange
+    domain: engineering
+    owner: data-squad
+    description: The files teams drop in buckets for finance and partners, and their contracts.
+  - name: quality
+    title: Quality platform
+    domain: engineering
+    owner: qa-core
+    description: The Quality Console, the test results bucket and the test tooling.
+
+products:
+  - name: customer-welcome
+    title: Customer welcome
+    system: storefront
+    capability: engage
+    description: Greets a returning customer by first name, counts the visits and shows the bank balance.
+  - name: checkout
+    title: Checkout
+    system: orders
+    capability: sell
+    description: Places an order and follows it while stock is reserved, the invoice issued and the payment captured.
+  - name: account-access
+    title: Account access
+    system: identity
+    capability: protect
+    description: Creates an account, signs in, resets a password, with every email landing in the QA mailbox.
+  - name: partner-contracts
+    title: Partner contracts
+    system: bank
+    capability: engage
+    description: Checks that a third party still answers what the contract we copied promises, with requests generated from that contract.
+  - name: bucket-checks
+    title: Bucket checks
+    system: data-exchange
+    capability: operate
+    description: The same generic checks on every team bucket, each bucket bringing its own contract (names, format, freshness, manifest).
+  - name: quality-console
+    title: Quality Console
+    system: quality
+    capability: operate
+    description: The back office of the quality platform, its tools and the company data, read-only.
+  - name: test-results
+    title: Test results
+    system: quality
+    capability: operate
+    description: Every CI test run, uploaded to a bucket, indexed and shown with its trends.
+
+components:
+  - name: front
+    title: Storefront web
+    type: website
+    lifecycle: production
+    system: storefront
+    owner: storefront-squad
+    source: frontend/
+    description: The static page customers use, served by nginx.
+    consumes: [storefront-api, identity-api]
+  - name: hello-api
+    title: Storefront API
+    type: service
+    lifecycle: production
+    system: storefront
+    owner: storefront-squad
+    source: src/hello_api/
+    description: Greets customers, counts visits and places orders.
+    provides: [storefront-api]
+    consumes: [bank-partner-api]
+    publishes: [order-workflow-events]
+    depends_on: [mycompany-db, orchestrator-db, visits-cache, order-workflow-queue]
+  - name: order-worker
+    title: Order worker
+    type: worker
+    lifecycle: production
+    system: orders
+    owner: checkout-squad
+    source: src/order_workflow/
+    description: Runs the order workflow one step per event.
+    publishes: [order-workflow-events]
+    subscribes: [order-workflow-events]
+    depends_on: [mycompany-db, orchestrator-db, order-workflow-queue]
+  - name: identity-service
+    title: Identity service
+    type: service
+    lifecycle: experimental
+    system: identity
+    owner: identity-squad
+    source: src/identity/
+    description: A simulated Auth0, sign-up, sign-in, password reset and management tickets.
+    provides: [identity-api]
+    depends_on: [identity-db, qa-mailbox]
+  - name: bank-partner
+    title: Bank Partner
+    type: external
+    lifecycle: production
+    system: bank
+    owner: partners-squad
+    source: partner/
+    description: The third-party core banking API, played locally by a fake and in tests by Microcks.
+    provides: [bank-partner-api]
+  - name: finance-export-job
+    title: Finance export job
+    type: worker
+    lifecycle: production
+    system: data-exchange
+    owner: data-squad
+    source: buckets/finance-exports/
+    description: Drops the invoices of the day as a CSV file, simulated by the files of buckets/.
+    depends_on: [finance-exports-bucket]
+  - name: catalog-feed-job
+    title: Catalog feed job
+    type: worker
+    lifecycle: production
+    system: data-exchange
+    owner: data-squad
+    source: buckets/catalog-feeds/
+    description: Publishes the product and stock feeds as JSON with a manifest, simulated by the files of buckets/.
+    depends_on: [catalog-feeds-bucket]
+  - name: bucket-checks
+    title: Bucket checks
+    type: test-suite
+    lifecycle: experimental
+    system: quality
+    owner: qa-core
+    source: features/bucket-checks/
+    description: Generic Gherkin checks run on every team bucket, one row of examples per bucket.
+    depends_on: [finance-exports-bucket, catalog-feeds-bucket]
+  - name: quality-console
+    title: Quality Console
+    type: website
+    lifecycle: production
+    system: quality
+    owner: qa-core
+    source: src/quality_console/
+    description: Back office pages and tools of the quality platform.
+    consumes: [gherkin-runner-api]
+    depends_on: [catalog-db, mycompany-db, orchestrator-db, identity-db, results-bucket]
+  - name: test-results-uploader
+    title: Test results uploader
+    type: library
+    lifecycle: production
+    system: quality
+    owner: qa-core
+    source: src/test_results/
+    description: Uploads a run to the results bucket and indexes it.
+    depends_on: [results-bucket]
+  - name: gherkin-runner
+    title: Gherkin runner
+    type: service
+    lifecycle: experimental
+    system: quality
+    owner: qa-web
+    source: src/gherkin_runner/
+    description: Runs the acceptance scenarios on demand against the running stack.
+    provides: [gherkin-runner-api]
+    depends_on: [results-bucket]
+
+apis:
+  - name: storefront-api
+    title: Storefront API
+    type: openapi
+    system: storefront
+    owner: storefront-squad
+    definition: contracts/storefront-openapi.yaml
+    description: Greeting, products and orders, generated by FastAPI.
+  - name: bank-partner-api
+    title: Bank Partner API
+    type: openapi
+    system: bank
+    owner: partners-squad
+    definition: contracts/bank-partner-openapi.yaml
+    description: The balance of an account, as the partner publishes it.
+  - name: order-workflow-events
+    title: Order workflow events
+    type: asyncapi
+    system: orders
+    owner: checkout-squad
+    definition: contracts/order-workflow-asyncapi.yaml
+    description: The thin events that drive an order from one step to the next.
+  - name: identity-api
+    title: Identity API
+    type: openapi
+    system: identity
+    owner: identity-squad
+    definition: contracts/identity-openapi.yaml
+    description: Sign-up, sign-in, password reset and management tickets.
+  - name: gherkin-runner-api
+    title: Gherkin runner API
+    type: openapi
+    system: quality
+    owner: qa-web
+    definition: contracts/gherkin-runner-openapi.yaml
+    description: Runs a feature or a scenario and reports its verdict.
+
+resources:
+  - name: mycompany-db
+    title: Company database
+    type: database
+    system: storefront
+    owner: storefront-squad
+    database: mycompany
+    description: The shared MySQL database, 30 tables of a retail and banking company.
+  - name: orchestrator-db
+    title: Workflow state store
+    type: database
+    system: orders
+    owner: checkout-squad
+    database: orchestrator
+    description: The workflows and their steps.
+  - name: identity-db
+    title: Identity users
+    type: database
+    system: identity
+    owner: identity-squad
+    database: identity
+    description: The users of the simulated tenant and their password tickets.
+  - name: catalog-db
+    title: Software catalog
+    type: database
+    system: quality
+    owner: qa-core
+    database: catalog
+    description: This catalog, loaded into MySQL for the tools to read.
+  - name: visits-cache
+    title: Visit counters
+    type: cache
+    system: storefront
+    owner: storefront-squad
+    description: Redis keys counting the visits of each customer.
+  - name: order-workflow-queue
+    title: Order workflow queue
+    type: queue
+    system: orders
+    owner: checkout-squad
+    description: The RabbitMQ queue every step event goes through.
+  - name: results-bucket
+    title: Test results bucket
+    type: bucket
+    system: quality
+    owner: qa-core
+    description: The Cloud Storage bucket CI uploads its reports to.
+  - name: qa-mailbox
+    title: QA mailbox
+    type: mailbox
+    system: identity
+    owner: qa-web
+    description: The mailbox every test account writes to, one plus tag per account.
+  - name: finance-exports-bucket
+    title: Finance exports
+    type: bucket
+    system: data-exchange
+    owner: data-squad
+    description: gs://finance-exports, one CSV of invoices per day under daily/, and a manifest.
+  - name: catalog-feeds-bucket
+    title: Catalog feeds
+    type: bucket
+    system: data-exchange
+    owner: data-squad
+    description: gs://catalog-feeds, the JSON feeds of products and stock under feeds/, and a manifest.

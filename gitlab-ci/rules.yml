@@ -1,0 +1,8 @@
+---
+.rules:
+  tests:
+    - if: $SCHEDULE_TASK == "results-index"
+      when: never
+    - when: on_success
+  results-index:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TASK == "results-index"

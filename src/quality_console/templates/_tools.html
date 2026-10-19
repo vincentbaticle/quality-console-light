@@ -1,0 +1,45 @@
+{% macro tool_cards(section) -%}
+<ul class="grid-cards">
+  {% for tool in tools if tool.section == section %}
+  <li><a href="{{ tool.path }}"><span class="icon">{{ tool.icon }}</span><strong>{{ tool.name }} <span class="badge {{ tool.kind }}" title="{{ tool.kind_note }}">{{ tool.kind }}</span></strong><p>{{ tool.purpose }}</p></a></li>
+  {% endfor %}
+</ul>
+{%- endmacro %}
+{% macro storefront_cards(storefront, products) -%}
+<ul class="grid-cards">
+  {% for product, anchor, name, purpose in products %}
+  <li class="with-proof"><a href="{{ storefront }}/#{{ anchor }}"><span class="icon">🛍️</span><strong>{{ name }} <span class="badge live" title="Writes for real in the dockerised stack.">live</span></strong><p>{{ purpose }}</p></a><a class="proof" href="/tools/gherkin#{{ product }}">🥒 The scenarios that prove it</a></li>
+  {% endfor %}
+</ul>
+{%- endmacro %}
+{% macro link_cards(links, details) -%}
+<ul class="grid-cards">
+  {% for name, url in links.items() %}
+  {% set icon, note = details.get(name, ("🔗", "")) %}
+  <li><a href="{{ url }}" target="_blank" rel="noopener"><span class="icon">{{ icon }}</span><strong>{{ name }} </strong><p>{{ note }}</p></a></li>
+  {% endfor %}
+</ul>
+{%- endmacro %}
+{% macro tools_page(links, details, storefront, products) -%}
+<section class="card zone static-zone">
+  <div class="section-head"><h2>Static Cockpit QA</h2><span class="hint">The QA cockpit of a real company: each tool says whether what it shows is static or changes as the stack is used.</span></div>
+  {{ tool_cards("cockpit") }}
+</section>
+<section class="card zone live-zone">
+  <div class="section-head"><h2>Live experimentation</h2><span class="hint">Real traffic on the dockerised tables, queue and mailbox: what you do here changes them.</span></div>
+  <h3 class="zone-title">Storefront products</h3>
+  <p class="hint">Each card opens its product alone on the storefront, in this tab; the storefront links back here.</p>
+  {{ storefront_cards(storefront, products) }}
+  <h3 class="zone-title">Running beside the console</h3>
+  <p class="hint">Services of the stack, to look under the hood. They open in a new tab.</p>
+  {{ link_cards(links, details) }}
+</section>
+<section class="card zone devx-zone">
+  <div class="section-head"><h2>DevX</h2><span class="hint">Tools for developers: what an endpoint really touches, test data on demand.</span></div>
+  {{ tool_cards("devx") }}
+</section>
+<section class="card zone utility-zone">
+  <div class="section-head"><h2>Utility tools</h2><span class="hint">Small helpers that make test files on your disk.</span></div>
+  {{ tool_cards("utility") }}
+</section>
+{%- endmacro %}

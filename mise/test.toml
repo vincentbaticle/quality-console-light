@@ -1,0 +1,36 @@
+# $schema = "https://mise.jdx.dev/schema/mise-task.json"
+
+["test"]
+alias = ["test-all"]
+description = "Run every suite: unit first, then integration"
+run = ["mise run test:unit", "mise run test:integration"]
+
+["test:unit"]
+alias = ["test-unit"]
+description = "Run the unit tests, pure logic only, no Docker needed, then upload their results to the local bucket when it runs (usage: mise run test:unit [-- <pytest-args>])"
+usage = 'arg "[args]..." var=#true help="Extra pytest arguments"'
+run = 'scripts/test_and_upload.sh unit-tests backend reports/unit -m unit --cov=src --cov-report=xml:coverage.unit.xml --cov-report=term-missing ${usage_args:-}'
+
+["test:integration"]
+alias = ["test-integration"]
+description = "Run the integration tests, each one starting its own throwaway containers, then upload their results to the local bucket when it runs (usage: mise run test:integration [-- <pytest-args>])"
+usage = 'arg "[args]..." var=#true help="Extra pytest arguments"'
+run = 'DOCKER_CONFIG=.docker scripts/test_and_upload.sh integration-tests backend reports/integration -m integration --cov=src --cov-report=xml:coverage.integration.xml --cov-report=term-missing ${usage_args:-}'
+
+["test:headed"]
+description = "Run the browser test with a visible Chromium, slowed down, to show the audience what happens"
+run = "DOCKER_CONFIG=.docker pdm run pytest -m integration tests/integration/test_hello_page_browser.py --headed --slowmo 800"
+
+["test:acceptance"]
+description = "Run the Gherkin scenarios of features/ against the stack mise run up started, then upload their results (usage: mise run test:acceptance [-- --only-feature=<product>/<file>.feature])"
+usage = 'arg "[args]..." var=#true help="Extra pytest arguments"'
+run = 'scripts/test_and_upload.sh acceptance-tests acceptance reports/acceptance -m acceptance tests/acceptance ${usage_args:-}'
+
+["test:perf"]
+alias = ["perf"]
+description = "Run the k6 baseline of the customer welcome against the stack mise run up started (10 virtual customers, 30 s, k6 installed by mise), then upload its summary to the results bucket"
+run = "scripts/perf_and_upload.sh customer-welcome-baseline.js perf-customer-welcome-baseline"
+
+["test:acceptance:headed"]
+description = "Run the Playwright scenarios of features/ in a visible, slowed down Chromium, against the stack mise run up started"
+run = "pdm run pytest tests/acceptance -m recorded --headed --slowmo 700"

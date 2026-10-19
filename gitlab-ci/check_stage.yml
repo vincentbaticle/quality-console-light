@@ -1,0 +1,6 @@
+---
+precommit-run:
+  stage: check
+  extends: .prek:run
+  needs: []
+  rules: !reference [.rules, tests]

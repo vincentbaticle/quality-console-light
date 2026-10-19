@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "_tools.html" import tool_cards %}
+{% set section = "utility" %}
+{% block title %}Utility tools - Quality Console{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Utility tools</h1>
+    <p class="subtitle">Small helpers that make test files on your disk.</p>
+  </div>
+</div>
+<div class="info"><p><strong>Audio asset generator</strong> writes placeholder tracks (WAV or FLAC, the duration, bit depth, rate and channels you pick) into <code>audio-assets/</code> of the repository: the folder is committed, its files never are.</p></div>
+<section class="card">
+  {{ tool_cards("utility") }}
+</section>
+{% endblock %}

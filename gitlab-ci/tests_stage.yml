@@ -1,0 +1,76 @@
+---
+.pytest:
+  stage: tests
+  image: python:${PYTHON_VERSION}-slim
+  variables:
+    TEST_ENV: ci
+  before_script:
+    - pip install --no-cache-dir "pdm==${PDM_VERSION}"
+    - pdm install --frozen-lockfile
+  after_script:
+    - if [ -s "coverage.${CI_JOB_NAME%-tests}.xml" ]; then cp "coverage.${CI_JOB_NAME%-tests}.xml" "reports/${CI_JOB_NAME}/coverage.xml"; fi
+    - pdm run python -m scripts.upload_results backend "reports/${CI_JOB_NAME}"
+  coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
+  needs: []
+  rules: !reference [.rules, tests]
+
+unit-tests:
+  extends: .pytest
+  script:
+    - pdm run pytest -m unit --junitxml="reports/${CI_JOB_NAME}/junit.xml" --html="reports/${CI_JOB_NAME}/report.html" --self-contained-html --cov=src --cov-report=xml:coverage.unit.xml --cov-report=term-missing
+  artifacts:
+    paths:
+      - coverage.unit.xml
+      - reports/
+    reports:
+      junit: reports/unit-tests/junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.unit.xml
+    when: always
+    expire_in: 1 week
+
+integration-tests:
+  extends: .pytest
+  services:
+    - name: redis:7.4-alpine
+      alias: redis
+    - name: mysql:8.4
+      alias: mysql
+      variables:
+        MYSQL_ROOT_PASSWORD: root
+    - name: quay.io/microcks/microcks-uber:1.13.2
+      alias: microcks
+      variables:
+        JAVA_TOOL_OPTIONS: "-Xms128m -Xmx512m"
+        ASYNC_MINION_ENABLED: "false"
+        GRPC_ENABLED: "false"
+        GRAPHQL_ENABLED: "false"
+    - name: rabbitmq:3.13-management
+      alias: rabbitmq
+    - name: fsouza/fake-gcs-server:1.55.1
+      alias: gcs
+      command: ["-scheme", "http", "-port", "4443", "-backend", "memory"]
+    - name: axllent/mailpit:v1.31.4
+      alias: mailpit
+  variables:
+    INTEGRATION_EXTERNAL_SERVICES: "true"
+    REDIS_HOST: redis
+    MYSQL_HOST: mysql
+    MICROCKS_URL: "http://microcks:8080"
+    GCS_URL: "http://gcs:4443"
+    RABBITMQ_HOST: rabbitmq
+    MAILPIT_HOST: mailpit
+  script:
+    - pdm run pytest -m integration --junitxml="reports/${CI_JOB_NAME}/junit.xml" --html="reports/${CI_JOB_NAME}/report.html" --self-contained-html --cov=src --cov-report=xml:coverage.integration.xml --cov-report=term-missing
+  artifacts:
+    paths:
+      - coverage.integration.xml
+      - reports/
+    reports:
+      junit: reports/integration-tests/junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.integration.xml
+    when: always
+    expire_in: 1 week

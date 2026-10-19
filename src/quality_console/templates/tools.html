@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "_tools.html" import tools_page %}
+{% set section = "tools" %}
+{% block title %}Tools - Quality Console{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Tools</h1>
+    <p class="subtitle">The static QA cockpit, the live experimentation playground, the DevX tools, then the utility tools.</p>
+  </div>
+</div>
+<div class="info"><p>Clicking a tool opens it here; every button inside a tool says, in a box like this one, what it does before you click it. Only the buttons that call an API or a database show a loader.</p></div>
+{{ tools_page(links, details, storefront, products) }}
+{% endblock %}

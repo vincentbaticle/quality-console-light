@@ -1,0 +1,324 @@
+x-database: &database
+  DB_HOST: mysql
+  DB_PORT: "3306"
+  DB_USER: root
+  DB_PASSWORD: root
+  DB_NAME: mycompany
+
+x-bank-partner-key: &bank-partner-key
+  BANK_PARTNER_API_KEY: bp-live-8f3c2a91d04e4b7aa6c55e2d19f0b7c3
+
+x-vault-files: &vault-files
+  DB_USER: ""
+  DB_PASSWORD: ""
+
+x-telemetry: &telemetry
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://observability:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_TRACES_EXPORTER: otlp
+  OTEL_METRICS_EXPORTER: otlp
+  OTEL_LOGS_EXPORTER: none
+  OTEL_METRIC_EXPORT_INTERVAL: "5000"
+  OTEL_BSP_SCHEDULE_DELAY: "1000"
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: mycompany
+    volumes:
+      - ./db:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  redis:
+    image: redis:7.4-alpine
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 3s
+      timeout: 10s
+      retries: 40
+
+  gcs:
+    image: fsouza/fake-gcs-server:1.55.1
+    command: ["-scheme", "http", "-port", "4443", "-public-host", "localhost:4443", "-backend", "filesystem", "-filesystem-root", "/storage", "-data", "/data"]
+    volumes:
+      - results-bucket:/storage
+      - ./buckets:/data:ro
+    ports:
+      - "4443:4443"
+
+  gcs-init:
+    image: curlimages/curl:8.16.0
+    command: ["sh", "-c", "curl -s --retry 20 --retry-connrefused --retry-delay 1 -o /dev/null -w 'bucket test-results: %{http_code}\\n' -X POST -H 'Content-Type: application/json' -d '{\"name\":\"test-results\"}' 'http://gcs:4443/storage/v1/b?project=local'"]
+    depends_on:
+      - gcs
+
+  mailpit:
+    image: axllent/mailpit:v1.31.4
+    ports:
+      - "8025:8025"
+
+  observability:
+    image: grafana/otel-lgtm:0.35.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    ports:
+      - "3000:3000"
+      - "4318:4318"
+
+  vault:
+    image: hashicorp/vault:1.20.4
+    command: ["server", "-dev", "-dev-root-token-id=root", "-dev-listen-address=0.0.0.0:8200"]
+    cap_add:
+      - IPC_LOCK
+    ports:
+      - "8200:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  vault-init:
+    image: hashicorp/vault:1.20.4
+    entrypoint: ["sh", "/vault-setup/init.sh"]
+    environment:
+      <<: *bank-partner-key
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: root
+      SHORT_TTL: 2m
+      SHORT_MAX_TTL: 6m
+    volumes:
+      - ./vault/init.sh:/vault-setup/init.sh:ro
+      - ./vault/policies:/policies:ro
+      - vault-bootstrap:/bootstrap
+      - vault-secrets:/secrets
+    depends_on:
+      vault:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  vault-agent:
+    image: hashicorp/vault:1.20.4
+    command: ["agent", "-config=/vault-setup/agent.hcl"]
+    volumes:
+      - ./vault/agent.hcl:/vault-setup/agent.hcl:ro
+      - vault-bootstrap:/bootstrap:ro
+      - vault-secrets:/vault/secrets
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -s /vault/secrets/hello-api/db.env && test -s /vault/secrets/hello-api/rabbitmq.env && test -s /vault/secrets/hello-api/bank-partner.env && test -s /vault/secrets/order-worker/db.env && test -s /vault/secrets/order-worker/rabbitmq.env && test -s /vault/secrets/identity-service/db.env"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+
+  api:
+    build: .
+    environment:
+      <<: [*database, *telemetry, *vault-files]
+      OTEL_SERVICE_NAME: hello-api
+      REDIS_URL: redis://redis:6379/0
+      PARTNER_URL: http://partner:8000
+      RABBITMQ_URL: amqp://rabbitmq:5672/%2F
+      DB_CREDENTIALS_FILE: /vault/secrets/hello-api/db.env
+      RABBITMQ_CREDENTIALS_FILE: /vault/secrets/hello-api/rabbitmq.env
+      BANK_PARTNER_API_KEY_FILE: /vault/secrets/hello-api/bank-partner.env
+    volumes:
+      - vault-secrets:/vault/secrets:ro
+    depends_on:
+      vault-agent:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      partner:
+        condition: service_started
+      observability:
+        condition: service_started
+
+  worker:
+    build: .
+    command: ["opentelemetry-instrument", "python", "-m", "order_workflow.worker"]
+    environment:
+      <<: [*database, *telemetry, *vault-files]
+      OTEL_SERVICE_NAME: order-worker
+      RABBITMQ_URL: amqp://rabbitmq:5672/%2F
+      DB_CREDENTIALS_FILE: /vault/secrets/order-worker/db.env
+      RABBITMQ_CREDENTIALS_FILE: /vault/secrets/order-worker/rabbitmq.env
+      WORKFLOW_STEP_DELAY_SECONDS: "1.5"
+    volumes:
+      - vault-secrets:/vault/secrets:ro
+    depends_on:
+      vault-agent:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      observability:
+        condition: service_started
+
+  identity:
+    build: .
+    command: ["opentelemetry-instrument", "uvicorn", "identity.main:app_from_environment", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: [*database, *telemetry, *vault-files]
+      DB_NAME: identity
+      DB_CREDENTIALS_FILE: /vault/secrets/identity-service/db.env
+      OTEL_SERVICE_NAME: identity-service
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      PUBLIC_URL: http://localhost:8080
+      MANAGEMENT_TOKEN: local-management-token
+    volumes:
+      - vault-secrets:/vault/secrets:ro
+    depends_on:
+      vault-agent:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+      observability:
+        condition: service_started
+
+  partner:
+    build: ./partner
+    environment:
+      <<: [*database, *telemetry, *bank-partner-key]
+      OTEL_SERVICE_NAME: bank-partner
+    ports:
+      - "8090:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      observability:
+        condition: service_started
+
+  mocks:
+    build: ./mocks
+    volumes:
+      - ./contracts:/contracts:ro
+    ports:
+      - "4010:4010"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4010/').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  console:
+    build: .
+    command: ["opentelemetry-instrument", "uvicorn", "quality_console.main:app_from_environment", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: [*database, *telemetry]
+      DB_USER: console_reader
+      DB_PASSWORD: reader
+      OTEL_SERVICE_NAME: quality-console
+      RESULTS_BUCKET: test-results
+      STORAGE_EMULATOR_HOST: http://gcs:4443
+      PRODUCT_URL: http://localhost:8080
+      OBSERVABILITY_URL: "http://localhost:3000/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22type%22%3A%22tempo%22%2C%22uid%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22limit%22%3A20%2C%22tableType%22%3A%22traces%22%2C%22query%22%3A%22%7Bresource.service.name%3D%5C%22hello-api%5C%22%7D%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22now-15m%22%2C%22to%22%3A%22now%22%7D%7D%7D"
+      MAILBOX_URL: http://localhost:8025
+      BROKER_URL: http://localhost:15672
+      VAULT_UI_URL: http://localhost:8200/ui/vault/secrets
+      MOCKS_URL: http://localhost:4010
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: console-token
+      CONTRACTS_DIR: /repo/contracts
+      FEATURES_DIR: /repo/features
+      DESIGNS_DIR: /repo/designs
+      CAPTURE_DIR: /repo/capture
+      DOCS_DIR: /repo/docs
+      ANNOUNCEMENTS_DIR: /repo/announcements
+      AUDIO_ASSETS_DIR: /repo/audio-assets
+      RUNNER_URL: http://runner:8000
+      API_URL: http://api:8000
+      FRONT_URL: http://front
+      CONSOLE_URL: http://localhost:8000
+      TEMPO_URL: http://observability:3200
+    volumes:
+      - ./contracts:/repo/contracts:ro
+      - ./features:/repo/features:ro
+      - ./designs:/repo/designs:ro
+      - ./capture:/repo/capture:ro
+      - ./docs:/repo/docs:ro
+      - ./announcements:/repo/announcements:ro
+      - ./audio-assets:/repo/audio-assets
+    ports:
+      - "8081:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      gcs-init:
+        condition: service_completed_successfully
+      observability:
+        condition: service_started
+      api:
+        condition: service_started
+
+  runner:
+    build:
+      context: .
+      dockerfile: gherkin-runner.Dockerfile
+    environment:
+      PROJECT_ROOT: /app
+      RESULTS_BUCKET: test-results
+      STORAGE_EMULATOR_HOST: http://gcs:4443
+      TEST_ENV: local
+      STOREFRONT_URL: http://front
+      MAILPIT_URL: http://mailpit:8025
+      CONSOLE_URL: http://console:8000
+      PARTNER_URL: http://partner:8000
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: tests-token
+    ports:
+      - "8082:8000"
+    volumes:
+      - ./features:/app/features:ro
+      - ./tests:/app/tests:ro
+      - ./contracts:/app/contracts:ro
+      - ./perf:/app/perf:ro
+    depends_on:
+      gcs-init:
+        condition: service_completed_successfully
+      front:
+        condition: service_started
+      partner:
+        condition: service_started
+
+  front:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+      - identity
+
+volumes:
+  results-bucket:
+  vault-bootstrap:
+  vault-secrets:

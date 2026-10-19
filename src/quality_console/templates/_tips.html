@@ -1,0 +1,208 @@
+{% macro tips_section() -%}
+<style>
+  .tips .tabs { display: flex; gap: 2px; padding: 3px; margin-bottom: 14px; background: var(--bg-subtle); border-radius: 999px; overflow-x: auto; }
+  .tips .tabs button { flex: 1; padding: 6px 12px; border: 0; border-radius: 999px; background: transparent; color: var(--fg-secondary); font: 600 12.5px var(--font); cursor: pointer; white-space: nowrap; }
+  .tips .tabs button[aria-selected=true] { background: var(--bg-surface); color: var(--fg); box-shadow: var(--shadow); }
+  .tip-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+  .tip-list li { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-surface); }
+  .tip-list strong { display: block; margin-bottom: 4px; }
+  .tip-list p { margin: 0 0 6px; color: var(--fg-secondary); font-size: 13px; }
+  .tip-list pre { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--bg-subtle); font: 12px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .design-demos { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+  .demo { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-surface); text-align: center; }
+  .demo p { margin: 0; color: var(--fg-secondary); font-size: 13px; }
+  #snow { position: fixed; inset: 0; z-index: 90; pointer-events: none; }
+  .target { position: relative; width: 100%; height: 130px; border-radius: 8px; background: repeating-linear-gradient(90deg, #d6b48a 0 26px, #c9a57a 26px 28px); cursor: crosshair; overflow: hidden; }
+  .target svg.hole { position: absolute; width: 54px; height: 54px; pointer-events: none; }
+  .transparent { display: grid; place-items: center; width: 100%; height: 130px; border-radius: 8px; background: repeating-conic-gradient(#d1d5db 0 25%, #f8fafc 0 50%) 0 0 / 16px 16px; }
+  .transparent img { width: 110px; height: 110px; }
+  .home-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+  .home-card .icon-tile { position: relative; display: grid; place-items: center; width: 72px; height: 72px; border-radius: 20px; overflow: hidden; background: var(--warning-bg); color: var(--warning); font-size: 34px; transition: transform .2s ease, box-shadow .2s ease; }
+  .home-card:hover .icon-tile { transform: translateY(-4px) scale(1.05); box-shadow: 0 8px 20px rgba(0, 0, 0, .12); }
+  .home-card .ribbon { position: absolute; left: 12px; top: 10px; width: 84px; height: 16px; line-height: 16px; transform: rotate(45deg); text-align: center; font: 700 9px var(--font); letter-spacing: .6px; text-transform: uppercase; color: #fff; background: #f59e0b; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); }
+  .home-card strong { font-size: 14px; }
+  .home-card small { color: var(--fg-secondary); font-size: 12px; }
+</style>
+<section class="card tips" id="tips">
+  <div class="section-head"><h2>Tips</h2><span class="hint">Short reminders, one tab per topic. To be completed together.</span></div>
+  <div class="tabs" role="tablist" aria-label="Tip topics">
+    {% for key, label in [("gitlab", "GitLab"), ("git", "Git"), ("sql", "SQL"), ("docker", "Docker"), ("qa", "QA"), ("design", "Front design")] %}
+    <button type="button" role="tab" aria-selected="{{ 'true' if loop.first else 'false' }}" aria-controls="tips-{{ key }}" data-tip-tab="{{ key }}">{{ label }}</button>
+    {% endfor %}
+  </div>
+
+  <div id="tips-gitlab" role="tabpanel" data-tip-panel="gitlab">
+    <ul class="tip-list">
+      <li><strong>Open a merge request from the terminal</strong><p>Push the branch, then create the MR with a title and a label.</p><pre>glab mr create --fill --label "To Review"</pre></li>
+      <li><strong>Read a failed job without the browser</strong><p>The last pipeline of the branch, then the log of a job.</p><pre>glab ci status
+glab ci trace unit-tests</pre></li>
+      <li><strong>Suggest a fix in a review</strong><p>A suggestion block in a diff comment: the author applies it in one click.</p><pre>```suggestion:-0+0
+assert response.status_code == 404
+```</pre></li>
+      <li><strong>Lint a pipeline before pushing it</strong><p>Catches a broken include or a wrong key without a pipeline run.</p><pre>glab ci lint .gitlab-ci.yml</pre></li>
+    </ul>
+  </div>
+
+  <div id="tips-git" role="tabpanel" data-tip-panel="git" hidden>
+    <ul class="tip-list">
+      <li><strong>Branch fresh from main</strong><p>Fetch first, then branch from the remote main, not from a stale local one.</p><pre>git fetch origin
+git switch -c feat/my-change origin/main</pre></li>
+      <li><strong>Conventional commits</strong><p>The type says what the change is, the release tool reads it.</p><pre>feat: show the stock of open bugs
+fix: count a rejected bug as closed</pre></li>
+      <li><strong>Rewrite the last commit</strong><p>Forgot a file: stage it and amend, before pushing.</p><pre>git add src/forgotten.py
+git commit --amend --no-edit</pre></li>
+      <li><strong>Find the commit that broke a test</strong><p>Git bisects the history, running the test at each step.</p><pre>git bisect start HEAD v1.4.0
+git bisect run pytest tests/unit -q</pre></li>
+    </ul>
+  </div>
+
+  <div id="tips-sql" role="tabpanel" data-tip-panel="sql" hidden>
+    <ul class="tip-list">
+      <li><strong>Count before you look</strong><p>A <code>COUNT(*)</code> tells whether the rows you expect are there at all.</p><pre>SELECT status, COUNT(*) FROM orders GROUP BY status;</pre></li>
+      <li><strong>Rows without a match</strong><p>A <code>LEFT JOIN</code> and an <code>IS NULL</code>: the orders nobody invoiced.</p><pre>SELECT o.id FROM orders o
+LEFT JOIN invoices i ON i.order_id = o.id
+WHERE i.id IS NULL;</pre></li>
+      <li><strong>Try a write, then undo it</strong><p>In a transaction, check the result, then roll back.</p><pre>START TRANSACTION;
+UPDATE stock_levels SET quantity = 0 WHERE id = 3;
+SELECT * FROM stock_levels WHERE id = 3;
+ROLLBACK;</pre></li>
+      <li><strong>Which tables does a query read?</strong><p><code>EXPLAIN</code> lists them, with the index used for each.</p><pre>EXPLAIN SELECT * FROM customers WHERE username = 'ada';</pre></li>
+    </ul>
+  </div>
+
+  <div id="tips-docker" role="tabpanel" data-tip-panel="docker" hidden>
+    <ul class="tip-list">
+      <li><strong>Follow one service's logs</strong><p>Only the last lines, then live.</p><pre>docker compose logs -f --tail 50 api</pre></li>
+      <li><strong>Open a shell in a container</strong><p>Look at what the service really sees: files, variables, network.</p><pre>docker compose exec api sh
+env | grep DB_</pre></li>
+      <li><strong>Rebuild one service only</strong><p>Faster than restarting the whole stack.</p><pre>docker compose up -d --build console</pre></li>
+      <li><strong>Free the disk</strong><p>Stopped containers, dangling images and the build cache.</p><pre>docker system df
+docker system prune</pre></li>
+    </ul>
+  </div>
+
+  <div id="tips-qa" role="tabpanel" data-tip-panel="qa" hidden>
+    <ul class="tip-list">
+      <li><strong>Search first, then read</strong><p>Look for an existing helper or test before writing a new one: reuse before writing.</p></li>
+      <li><strong>Never weaken a CI gate</strong><p>A red gate is fixed, not silenced: no lowered threshold, no skipped job to get a merge.</p></li>
+      <li><strong>Official tooling, local identical to CI</strong><p>Run the same hooks and the same commands as the pipeline before pushing.</p><pre>mise run hooks:run
+mise run test</pre></li>
+      <li><strong>No magic value</strong><p>A business value gets a named constant that says what it means.</p><pre>STALE_DAYS = 28  # not: if age &gt; 28</pre></li>
+      <li><strong>No masking fallback</strong><p>A missing value fails loudly; a silent default hides the bug the test should have caught.</p></li>
+      <li><strong>A test writes its own data</strong><p>Its own account, its own plus address; restore what it changed so the next run starts clean.</p></li>
+    </ul>
+  </div>
+
+  <div id="tips-design" role="tabpanel" data-tip-panel="design" hidden>
+    <div class="design-demos">
+      <div class="demo">
+        <button type="button" class="button" id="snow-button">❄ Let it snow</button>
+        <p>A canvas over the page, flakes drawn in a <code>requestAnimationFrame</code> loop; click again to stop.</p>
+      </div>
+      <div class="demo">
+        <div class="target" id="target" aria-label="Wooden target: click to shoot">
+        </div>
+        <p>Click the wood to shoot: the hole lands where the pointer is.</p>
+      </div>
+      <div class="demo">
+        <div class="transparent"><img src="/static/bullet-hole.svg" alt="A bullet hole, on a transparent background" /></div>
+        <p>The same bullet hole as a static image on a transparent background (the checkerboard shows through): <a href="/static/bullet-hole.svg" download>download the SVG</a>.</p>
+      </div>
+      <div class="demo">
+        <button type="button" class="home-card" aria-label="Recover requester, beta">
+          <span class="icon-tile">👤<span class="ribbon">Beta</span></span>
+          <strong>Recover requester</strong>
+          <small>One requester at a time</small>
+        </button>
+        <p>An entry card with its orange <strong>Beta</strong> ribbon across the corner of the icon.</p>
+      </div>
+    </div>
+  </div>
+</section>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="scorch"><stop offset="0" stop-color="#1a1a1a"/><stop offset=".45" stop-color="#2b2118"/><stop offset=".7" stop-color="#6b4a2f" stop-opacity=".7"/><stop offset="1" stop-color="#6b4a2f" stop-opacity="0"/></radialGradient>
+    <g id="bullet-hole">
+      <circle cx="50" cy="50" r="30" fill="url(#scorch)"/>
+      <g stroke="#2b2118" stroke-width="1.6" stroke-linecap="round" fill="none">
+        <path d="M50 50 L18 30 L8 26"/><path d="M50 50 L84 22"/><path d="M50 50 L90 58 L97 57"/>
+        <path d="M50 50 L70 90"/><path d="M50 50 L22 82 L14 92"/><path d="M50 50 L46 6"/>
+      </g>
+      <circle cx="50" cy="50" r="11" fill="#0b0b0b"/>
+      <circle cx="50" cy="50" r="11" fill="none" stroke="#5c4330" stroke-width="2.5"/>
+      <circle cx="47" cy="47" r="3" fill="#3a3a3a"/>
+    </g>
+  </defs>
+</svg>
+<script>
+  (() => {
+    const tabs = document.querySelectorAll("[data-tip-tab]");
+    const panels = document.querySelectorAll("[data-tip-panel]");
+    tabs.forEach((tab) => tab.addEventListener("click", () => {
+      tabs.forEach((t) => t.setAttribute("aria-selected", String(t === tab)));
+      panels.forEach((p) => { p.hidden = p.dataset.tipPanel !== tab.dataset.tipTab; });
+    }));
+
+    const FLAKES = 160;
+    let snowing = null;
+    document.getElementById("snow-button").addEventListener("click", (event) => {
+      if (snowing) { snowing(); return; }
+      const canvas = document.createElement("canvas");
+      canvas.id = "snow";
+      document.body.append(canvas);
+      const ctx = canvas.getContext("2d");
+      const size = () => { canvas.width = innerWidth; canvas.height = innerHeight; };
+      size();
+      addEventListener("resize", size);
+      const flakes = Array.from({ length: FLAKES }, () => ({ x: Math.random() * innerWidth, y: Math.random() * -innerHeight, r: 1 + Math.random() * 3, s: .5 + Math.random() * 1.5, d: Math.random() * Math.PI * 2 }));
+      let frame;
+      const draw = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "rgba(255, 255, 255, .9)";
+        ctx.shadowColor = "rgba(71, 85, 105, .9)";
+        ctx.shadowBlur = 4;
+        for (const f of flakes) {
+          f.d += .01;
+          f.y += f.s;
+          f.x += Math.sin(f.d) * .6;
+          if (f.y > canvas.height) { f.y = -5; f.x = Math.random() * canvas.width; }
+          ctx.beginPath();
+          ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        frame = requestAnimationFrame(draw);
+      };
+      draw();
+      event.currentTarget.textContent = "☀ Stop the snow";
+      snowing = () => {
+        cancelAnimationFrame(frame);
+        removeEventListener("resize", size);
+        canvas.remove();
+        snowing = null;
+        document.getElementById("snow-button").textContent = "❄ Let it snow";
+      };
+    });
+
+    const HOLE = 54;
+    const target = document.getElementById("target");
+    const shoot = (x, y) => {
+      const hole = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      hole.setAttribute("class", "hole");
+      hole.setAttribute("viewBox", "0 0 100 100");
+      hole.style.left = `${x - HOLE / 2}px`;
+      hole.style.top = `${y - HOLE / 2}px`;
+      const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+      use.setAttribute("href", "#bullet-hole");
+      use.setAttribute("transform", `rotate(${Math.floor(Math.random() * 360)} 50 50)`);
+      hole.append(use);
+      target.append(hole);
+    };
+    target.addEventListener("click", (event) => {
+      const box = target.getBoundingClientRect();
+      shoot(event.clientX - box.left - target.clientLeft, event.clientY - box.top - target.clientTop);
+    });
+    shoot(70, 50);
+    shoot(150, 85);
+  })();
+</script>
+{%- endmacro %}

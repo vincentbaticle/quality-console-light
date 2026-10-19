@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ api.title }} - Quality Console{% endblock %}
+{% block content %}
+<nav class="crumbs"><a href="/tools">Tools</a> / <a href="/tools/apis">API docs</a> / {{ api.title }}</nav>
+<div class="page-head">
+  <div>
+    <h1>{{ doc.title }} <span class="badge type">AsyncAPI · v{{ doc.version }}</span></h1>
+    <p class="subtitle">{{ doc.description }}</p>
+    <p class="hint">Owned by <strong>{{ api.owner }}</strong>. Contract: <a href="/tools/apis/{{ api.name }}/definition"><code>{{ api.target }}</code></a>.</p>
+  </div>
+</div>
+<div class="info"><p>Built from the AsyncAPI contract: who sends and who receives each event on which queue, and each payload field. The <a href="/tools/recordings">Recorded examples</a> tool shows the events the stack really published.</p></div>
+<div class="two-cols">
+  <section class="card">
+    <h2>Servers</h2>
+    <dl class="kv">{% for url, description in doc.servers %}<dt class="mono">{{ url }}</dt><dd>{{ description }}</dd>{% endfor %}</dl>
+  </section>
+  <section class="card">
+    <h2>Channels</h2>
+    <dl class="kv">{% for channel in doc.channels %}<dt class="mono">{{ channel.address }}</dt><dd>{{ channel.description }}</dd>{% endfor %}</dl>
+  </section>
+</div>
+<section class="card">
+  <h2>Operations</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Action</th><th>Operation</th><th>Channel</th><th>Messages</th></tr></thead>
+      <tbody>
+        {% for operation in doc.operations %}
+        <tr>
+          <td><span class="badge {% if operation.action == 'send' %}skipped{% else %}success{% endif %}">{{ operation.action }}</span></td>
+          <td class="wrap"><strong>{{ operation.title }}</strong><br /><span class="secondary">{{ operation.summary }}</span></td>
+          <td class="mono">{{ operation.channel }}</td>
+          <td class="wrap">{% for name in operation.messages %}<a href="#message-{{ name }}" class="mono">{{ name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% for message in doc.messages %}
+<section class="card" id="message-{{ message.name }}">
+  <h3>{{ message.title }} <span class="mono muted">{{ message.name }}</span></h3>
+  <p class="secondary">{{ message.summary }}</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Allowed values</th><th>Description</th></tr></thead>
+      <tbody>
+        {% for field in message.fields %}
+        <tr><td class="mono">{{ field.name }}</td><td class="mono">{{ field.type }}</td><td>{% if field.required %}yes{% else %}no{% endif %}</td><td class="mono wrap">{{ field.allowed }}</td><td class="wrap secondary">{{ field.description }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% for name, payload in message.examples %}
+  <p class="hint" style="margin:12px 0 4px">Example: {{ name }}</p>
+  <pre class="mono" style="margin:0;padding:10px;border-radius:6px;background:var(--bg-subtle)">{{ payload }}</pre>
+  {% endfor %}
+</section>
+{% endfor %}
+{% endblock %}

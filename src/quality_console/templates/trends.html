@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% set section = "jobs" %}
+{% block title %}Jobs - Quality Console{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Jobs</h1>
+    <p class="subtitle">Every job of the index, its last runs oldest to newest, and how often it passes. Open a job for its dated trend.</p>
+  </div>
+</div>
+<div class="info"><p>One line per job and environment: its last runs as colored bars, oldest to newest. Clicking a job opens its latest run on the Trends tab.</p></div>
+<section class="card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Job</th><th>Env</th><th>Last runs</th><th>Pass rate</th><th>Streak</th><th>Latest run</th></tr></thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td><a href="/test-results?date_range=all&tab=trends&run={{ job.latest.id | urlencode }}"><strong>{{ job.job_name }}</strong></a> <span class="badge type">{{ job.artifact_type }}</span></td>
+          <td><span class="env {{ job.env }}">{{ job.env }}</span></td>
+          <td><span class="squares">{% for status in job.statuses %}<i class="{{ status }}" title="{{ status }}"></i>{% endfor %}</span></td>
+          <td><strong>{{ job.pass_rate }}%</strong></td>
+          <td><span class="badge {{ job.streak.status }}">{{ job.streak.count }} {% if job.streak.status == "success" %}passed{% elif job.streak.status == "failed" %}failed{% else %}unknown{% endif %}</span></td>
+          <td class="secondary">{{ job.latest.timestamp[:16] | replace("T", " ") }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="muted">No run indexed yet: Refresh on the Test results page.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

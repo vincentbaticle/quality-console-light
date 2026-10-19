@@ -1,0 +1,116 @@
+asyncapi: 3.0.0
+info:
+  title: Order workflow events
+  version: 1.0.0
+  description: >-
+    The thin events that drive an order from placed to paid. Each event names a
+    workflow and the step to run now; the worker reads everything else from the
+    orchestrator database, runs the step, then publishes the event of the next
+    one. The storefront API publishes the first event when an order is placed.
+    One durable RabbitMQ queue carries them all, consumed one at a time and
+    acknowledged once handled, so a worker that dies mid-step gets the event
+    again on restart.
+defaultContentType: application/json
+servers:
+  local:
+    host: localhost:5672
+    protocol: amqp
+    protocolVersion: 0.9.1
+    description: The RabbitMQ of mise run up, management UI on http://localhost:15672.
+channels:
+  orderWorkflow:
+    address: order-workflow
+    title: order-workflow queue
+    description: Durable queue, default exchange, routing key order-workflow.
+    messages:
+      reserveStock:
+        $ref: '#/components/messages/reserveStock'
+      issueInvoice:
+        $ref: '#/components/messages/issueInvoice'
+      capturePayment:
+        $ref: '#/components/messages/capturePayment'
+    bindings:
+      amqp:
+        is: queue
+        queue:
+          name: order-workflow
+          durable: true
+          exclusive: false
+          autoDelete: false
+operations:
+  startWorkflow:
+    action: send
+    title: Start the workflow of a placed order
+    summary: The storefront API publishes the first step once the order is written as pending.
+    channel:
+      $ref: '#/channels/orderWorkflow'
+    messages:
+      - $ref: '#/channels/orderWorkflow/messages/reserveStock'
+  publishNextStep:
+    action: send
+    title: Publish the next step
+    summary: The order worker publishes the following step once a step succeeded.
+    channel:
+      $ref: '#/channels/orderWorkflow'
+    messages:
+      - $ref: '#/channels/orderWorkflow/messages/issueInvoice'
+      - $ref: '#/channels/orderWorkflow/messages/capturePayment'
+  runStep:
+    action: receive
+    title: Run a step
+    summary: The order worker runs the step an event names, then acknowledges it.
+    channel:
+      $ref: '#/channels/orderWorkflow'
+    messages:
+      - $ref: '#/channels/orderWorkflow/messages/reserveStock'
+      - $ref: '#/channels/orderWorkflow/messages/issueInvoice'
+      - $ref: '#/channels/orderWorkflow/messages/capturePayment'
+components:
+  messages:
+    reserveStock:
+      name: reserve_stock
+      title: Reserve stock
+      summary: Take the ordered quantity from the stock, or cancel the order when there is not enough.
+      payload:
+        $ref: '#/components/schemas/stepEvent'
+      examples:
+        - name: placed
+          payload:
+            workflow_id: 6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b
+            type: reserve_stock
+    issueInvoice:
+      name: issue_invoice
+      title: Issue invoice
+      summary: Write the invoice of the order, numbered INV-<year>-<order id>.
+      payload:
+        $ref: '#/components/schemas/stepEvent'
+      examples:
+        - name: stock reserved
+          payload:
+            workflow_id: 6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b
+            type: issue_invoice
+    capturePayment:
+      name: capture_payment
+      title: Capture payment
+      summary: Record the payment of the invoice, which marks the order as paid.
+      payload:
+        $ref: '#/components/schemas/stepEvent'
+      examples:
+        - name: invoice issued
+          payload:
+            workflow_id: 6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b
+            type: capture_payment
+  schemas:
+    stepEvent:
+      type: object
+      additionalProperties: false
+      required: [workflow_id, type]
+      properties:
+        workflow_id:
+          type: string
+          format: uuid
+          description: The workflow, a row of orchestrator.workflows.
+        type:
+          type: string
+          enum: [reserve_stock, issue_invoice, capture_payment]
+          description: The step to run now.
