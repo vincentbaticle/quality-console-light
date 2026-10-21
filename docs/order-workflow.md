@@ -1,5 +1,7 @@
 # The order workflow: an event-driven POST
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 The second form of the product page places an order. Unlike the greeting, the API does not do the work while you wait: it writes the order, answers `202 Accepted` at once, and hands the work over to a worker through a message broker, one event per step. It is the shape of an event-driven orchestrator: a thin HTTP surface on top of a queue, the state of each workflow kept in its own database, every step triggered by the completion of the previous one.
 
 > **TL;DR**

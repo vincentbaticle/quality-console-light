@@ -1,5 +1,7 @@
 # Tips: short reminders, one tab per topic
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 **DevX**, **Tips** gathers short reminders, each with an example to copy: GitLab, Git, SQL, Docker, QA and front design. A first set, to be completed together.
 
 > **TL;DR**

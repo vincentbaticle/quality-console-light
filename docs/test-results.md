@@ -1,5 +1,7 @@
 # Test results in a bucket
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 How a test run ends up on the **Test results** page of the Quality Console, all on the laptop: the tests write JUnit and HTML reports, an uploader puts them in a Cloud Storage bucket the way a CI test runner does, an indexer summarises the bucket, and the console reads that summary. The bucket is a local Cloud Storage emulator, so nothing needs a cloud account.
 
 > **TL;DR**

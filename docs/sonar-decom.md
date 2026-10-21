@@ -1,5 +1,7 @@
 # Leaving SonarQube: a quality gate on new code without a server
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 SonarQube blocks a merge request on a handful of conditions, and every one of them is scoped to the code the merge request adds. Switching it off without losing that gate is less about picking new analysers than about rebuilding the thin layer SonarQube sells on top of them: the new-code scope, the decision of what blocks, and one verdict. This page is the method, as it was applied to retire SonarQube from a real set of repositories in Python, JS/TS, PHP and Java.
 
 > **TL;DR**

@@ -1,5 +1,7 @@
 # Audio asset generator: placeholder tracks on your disk
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 **Utility tools**, **Audio asset generator** writes placeholder audio tracks for test data: a form picks the duration, the format, the bit depth, the sample rate, the channels, the number of files and a file name prefix, and **Generate** writes them into `audio-assets/` at the root of the repository.
 
 > **TL;DR**

@@ -1,5 +1,7 @@
 # quality-console-light
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 A simulated company, **MyCompany**, and the tests that run it for real. Its storefront offers three products (a customer welcome, a checkout, an account access), backed by real services: an API, a MySQL company database, Redis, a third-party bank replayed by Microcks, an order workflow through RabbitMQ, a simulated Auth0 tenant and a QA mailbox. Each test starts its own throwaway containers with [testcontainers](https://testcontainers-python.readthedocs.io/); run by hand, every call shows up as a trace, and the **Quality Console** gathers the catalog, the test results and the QA tools.
 
 > **TL;DR**
@@ -357,3 +359,7 @@ Edit `frontend/index.html` and `frontend/app.js`, then add a test to `tests/inte
 </details>
 
 With Claude Code, `/new-api-test` follows these same steps; the conventions it reads are in `CLAUDE.md`.
+
+## License
+
+[MIT](LICENSE), provided as is, without any warranty.

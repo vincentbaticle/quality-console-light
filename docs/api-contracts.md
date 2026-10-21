@@ -1,5 +1,7 @@
 # API contracts
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 Every API of the catalog has its contract in `contracts/`, and the Quality Console shows them: Swagger UI for the HTTP APIs, a page of its own for the events of the order workflow.
 
 > **TL;DR**

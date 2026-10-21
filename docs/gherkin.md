@@ -1,5 +1,7 @@
 # Gherkin scenarios, run from the Quality Console
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 The acceptance scenarios describe each product in its own words, in `features/<product>/*.feature`. They run with pytest-bdd against the stack `mise run up` started, from a terminal or with one click in the console, and every run is filed in the test results like a CI job.
 
 > **TL;DR**

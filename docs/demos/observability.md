@@ -1,5 +1,7 @@
 # Observability demo: see what the product does
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 Step-by-step script to show an audience what observability brings, with the same product as the [testcontainers demo](testcontainers.md): every call to the API leaves a trace, and a trace tells what happened behind the page, across services, without opening a debugger or reproducing anything. In production the traces go to a platform such as Tsuga; here a free all-in-one container plays that platform on the laptop. About 15 minutes.
 
 > **TL;DR**

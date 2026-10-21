@@ -1,5 +1,7 @@
 # Recorded examples: real calls and real events, replayed by the tests
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 A test that replays a hand-written example only proves the code agrees with its author. This project records what the neighbours really say, keeps the transcript, and turns it into the examples the tests replay against throwaway containers. The Quality Console lists every recording in **Tools**, **Recorded examples**, right after **API docs**.
 
 > **TL;DR**

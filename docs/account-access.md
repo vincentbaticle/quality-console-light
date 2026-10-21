@@ -1,5 +1,7 @@
 # Account access: a simulated Auth0 and the QA mailbox
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 The third product of the storefront signs customers in through a simulated Auth0 tenant, and every email it sends lands in a QA mailbox the tests read. It reproduces, locally, the setup a team needs to test sign-in and password emails for real.
 
 > **TL;DR**

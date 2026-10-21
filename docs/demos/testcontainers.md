@@ -1,5 +1,7 @@
 # Run the testcontainers demo
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 Step-by-step script to present testcontainers to an audience with this project: a simulated company storefront (three products on one page, an API, a MySQL company database, Redis, a third-party "Bank Partner", a simulated Auth0 and a QA mailbox) whose tests start their own throwaway containers. Follow it once the day before to rehearse, then on stage. About 20 minutes.
 
 Two other demos use the same project: [observability](observability.md) (what the product does, seen through its traces) and the [Quality Console](quality-console.md) (the catalog, the test results and the QA tools in one back office).

@@ -1,5 +1,7 @@
 # Recorded scenarios: from a journey clicked to a Playwright test
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 A person who knows the product (a PO, a QA) clicks a journey on the storefront; it becomes a Gherkin scenario a developer turns into a Playwright test, run from the console. The chain comes from a team's `record-test` skill and the decisions around it (the scenario template, the cleaning of the recording, the test ticket, the target workflow), taken here on the storefront of MyCompany to see what each one is worth.
 
 > **TL;DR**

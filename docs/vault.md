@@ -1,5 +1,7 @@
 # Vault: short-lived credentials for the services, a long-lived key for the bank
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 The storefront services get their database and broker credentials from HashiCorp Vault, each a user Vault creates for one service and drops a few minutes later; the Bank Partner's key, a secret the bank issued once, lives in Vault too. **DevX**, **Vault** shows which credentials are out and how long they have left.
 
 > **TL;DR**

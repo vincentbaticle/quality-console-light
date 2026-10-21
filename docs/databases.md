@@ -1,5 +1,7 @@
 # Databases: every table the console may read
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 **Databases** lists every database the console's read-only account (`console_reader`) can read, then their tables, then their rows.
 
 > **TL;DR**

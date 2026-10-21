@@ -45,6 +45,10 @@ Demo project of the QA team: a simulated company whose storefront offers three p
 - `tests/integration/conftest.py`: every container fixture. Tests never start a container themselves.
 - `gitlab-ci/`: `mocks.yml` holds stand-ins for the shared building blocks (pre-commit, SonarQube); no job may call an external service.
 
+## Disclaimer on every page
+
+Every page of `docs/` and the README starts, right after its `#` title, with the same `> **Disclaimer**: ...` quote (personal demo, not a source of truth, subjective despite the quotes, may be wrong or outdated, not for production, provided as is without warranty). Copy it word for word from an existing page. The console (`templates/base.html`) and the storefront (`frontend/index.html`) carry a short version in their footer. The repo is under the MIT License (`LICENSE`).
+
 ## Conventions for a new endpoint
 
 - Follow the worked example of `README.md` ("Adding an API endpoint and its tests"): a pydantic response model, a route inside `create_app`, `Username` for a `username` parameter, `visits_key` for any Redis key of a visitor.

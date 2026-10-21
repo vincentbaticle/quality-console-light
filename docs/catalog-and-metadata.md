@@ -1,5 +1,7 @@
 # The software catalog and the test metadata
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 The company's systems, components, APIs, databases and teams are declared once, as code, in `catalog/catalog.yaml`. Every test says which of them it covers, and a unit test refuses a value the catalog does not hold.
 
 > **TL;DR**

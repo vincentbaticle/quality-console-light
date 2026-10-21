@@ -1,5 +1,7 @@
 # retro-footprint: which fronts, APIs and tables does a test touch?
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 The question: a test opens pages of some fronts, calls some APIs, maybe reads the database itself, and those APIs read and write some tables; colleagues use the same database at the same minute. Which fronts, APIs and tables are my test's? The name says how: the footprint is found after the fact, from what the test left behind (counters, traces), not from its code. **DevX**, **retro-footprint** answers it on the real stack, with one click.
 
 > **TL;DR**

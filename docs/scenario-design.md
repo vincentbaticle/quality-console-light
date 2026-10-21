@@ -1,5 +1,7 @@
 # Scenario design
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 A scenario design draws a journey as a graph, every state and every transition, and each Gherkin scenario as a path on it. Gherkin says precisely what one scenario checks; the design shows where all of them go, and where none goes yet. **Tools**, **Scenario design** in the Quality Console.
 
 > **TL;DR**

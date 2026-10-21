@@ -1,5 +1,7 @@
 # Testing with testcontainers: how each product is tested, and how to test a test
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 The general guide of the project: what a test with real neighbours looks like, which test proves which product, and how to check that such a test really tests something.
 
 > **TL;DR**

@@ -1,5 +1,7 @@
 # Quality Console demo: the quality platform in one place
 
+> **Disclaimer**: this is a personal demo project, not a source of truth or a reference implementation. It reflects my own understanding and choices: its content remains subjective, despite the quotes and references it contains. It may be incomplete, simplified, inaccurate or outdated, and it is not meant for production use. Always check the official documentation before applying anything from it. Provided as is, without any warranty: you use it at your own risk.
+
 Step-by-step script to show the back office of the project, the **Quality Console**: the software catalog of the company, its databases read-only, the CI test results, and the tools of the QA team (Gherkin scenarios run with a click, API docs, a bucket browser), each wired to real services. Same product as the [testcontainers demo](testcontainers.md). About 25 minutes, or pick sections.
 
 > **TL;DR**
