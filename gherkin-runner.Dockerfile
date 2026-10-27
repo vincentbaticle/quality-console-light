@@ -6,7 +6,7 @@ ENV PYTHONPYCACHEPREFIX=/tmp/pycache \
 
 WORKDIR /app
 COPY --from=grafana/k6:1.3.0 /usr/bin/k6 /usr/local/bin/k6
-RUN pip install --no-cache-dir "pdm==2.29.1"
+RUN pip install --no-cache-dir "pdm==2.29.1" "unearth==0.18.3" "hishel==1.3.1"
 COPY pyproject.toml pdm.lock README.md ./
 COPY src ./src
 RUN pdm install --frozen-lockfile --no-editable
