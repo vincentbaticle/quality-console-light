@@ -24,6 +24,8 @@ A test is a few steps: pages of a front opened, API calls, SQL queries of its ow
 | API using tables, then SQL: `GET /api/hello`, then ada's profile | one API call, then one query of the test | the hello path, then `customers`, `customer_addresses`, `customer_preferences` read by the test |
 | Front, then API using tables: the storefront greets ada | a page of the storefront, then one API call | the storefront, then the hello path |
 | Front, API, then a redirect to another front | a page of the storefront, one API call, then a page of the Quality Console reached by a redirect | the storefront, the hello path, then the Quality Console reading `customers` itself |
+| Resource optimization: the same greeting twice | the hello call, twice | every endpoint and table of the hello path used twice: **2 calls and 4 queries to spare** |
+| Ownership: a service whose team forgot to declare it | one API call, then one call of the newsletter service (`NEWSLETTER_URL`) | the hello path, owned by its teams; `customer_preferences`, `newsletter_subscriptions`, `newsletters`, read by the newsletter service only: **3 orphan tables** |
 
 Two more tests, under *Simulated examples*, call nothing: their runs are drawn from a fixed seed (`demo_run` in `quality_console/footprint.py`, a run every 2 seconds, a pause of 4), so they look the same every time. They show how the page holds what the real tests are too small to show:
 
@@ -34,6 +36,14 @@ Two more tests, under *Simulated examples*, call nothing: their runs are drawn f
 | Demo, many of a kind | 10 fronts in a row, then one export reading 29 tables, while a database trigger nobody traces writes `audit_logs` | a stack of 10 fronts, a stack of 29 tables, and `audit_logs` *counted only, no trace* in the final answer |
 
 Two fronts play the parts of a company's intranet and of its developer portal (a Backstage, say): the **storefront** (nginx, `FRONT_URL`), a static front calling the API from the browser, sending no trace; and the **Quality Console** (`CONSOLE_URL`), a server-rendered front reading the database itself, instrumented like the API. The lab opens a page the way a browser asks for it (one `GET`, no JavaScript run); the API call the page would make is the next step of the test. The redirect is told by the test (`redirect=True` on the step), the way a test following a link or a `302` knows it; the path draws it on the dotted line.
+
+## Three answers
+
+The page puts its three answers first, each in its own numbered card, linked from a strip under the progress bar:
+
+1. **Path of the test**: every front, API and table the test goes through, in order, the traces and the database's count merged.
+2. **Ownership**: which team owns each table in Grafana, and the orphans.
+3. **Resource optimization**: the endpoints called and the tables read more than once, where once would do.
 
 ## What one click on Run does
 
@@ -99,6 +109,44 @@ A query of the test itself needs no trace: its statement, in the test's code, na
 - **Fronts, APIs and tables used so far**: the fronts ("opened by the test" or "after a redirect"), the APIs ("called by the test" or "in the trace"), each with the number of runs its step was played in (`7/10 runs`: a step skipped in some runs, a branch), then only the tables some run saw, not the 30. Black, still candidate, numbered in the order the last run touched them; light grey, ruled out; outlined, confirmed by the trace. Each table says it under its name, with how the runs used it (`read`, `write` or `read + write`) and in how many runs the database saw it (`4/5 runs`): one run missing is enough to rule a table out. Each table tagged `live` (the storefront writes it) or `static`.
 - **Run details**, folded by default: one tab per run, the pause between the two batches: the steps with their outcome (`HTTP 200`, `2 rows`) and the tables each moved, the colleagues' tables (the looping colleague in blue), every table seen with its reads and writes, what the run ruled out. The **Coverage check** tab opens when the runs end: the answer's accesses (service, table, read or write) beside the tables the database saw in every run, and the check's result.
 
+## Ownership: orphan tables, invisible in Grafana by team
+
+An observability platform files telemetry under a team when the service says which one: here a `team` resource attribute, set with the standard `OTEL_RESOURCE_ATTRIBUTES` variable of the [OpenTelemetry SDK configuration](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/) (`team=storefront-squad`). Every span of the service carries it, so each SQL span says which team touched which table. A team that forgets the line still sends spans, but nobody owns them: searching by team never finds its tables.
+
+`docker-compose.yml` declares the team of each service from `catalog/catalog.yaml` (`hello-api`, `order-worker`, `identity-service`, `bank-partner`, `quality-console`), except one: the **newsletter service** (`src/newsletter/`, service `newsletter`), owned by the storefront squad in the catalog, deployed without its `team`, a forgotten declaration.
+
+Once the final answer is ready, the **Ownership** card puts each of its tables in one group:
+
+- **owned**: a span of the test's traces naming the table comes from a service declaring a team; the team is shown, and so is the TraceQL query a team runs in Grafana to find its tables (`{ resource.team = "storefront-squad" && span.db.name = "mycompany" }`);
+- **orphan**, in red with a banner: the database counted it in every run, but no span of a declared team names it. Either its spans come from services declaring no team (`spans of newsletter-service, no team declared`), or there is no span at all (`counted by the database, no span names it`: a trigger, an untraced service);
+- **the test's own SQL**: named only by a query of the test, no service to own it.
+
+Likely colleagues are left out. The final path marks each orphan table too. Without a trace (Tempo unreachable, a test of SQL only), ownership stays unknown: the teams are only in the spans.
+
+The test *Ownership: GET /api/hello, then a service whose team forgot to declare it* shows it for real: `customers` (the storefront API and the bank partner) and `bank_accounts` are owned, the 3 tables only the newsletter service reads are orphans. In Grafana, `{ resource.service.name = "newsletter-service" && resource.team != nil }` finds nothing. The simulated *many of a kind* shows the other cause: `audit_logs`, written by a trigger nobody traces.
+
+## Resource optimization: endpoints and tables used more than once
+
+Each server span is one call to an endpoint, each SQL span reading a table one query on the database. Once the traces are read, both are counted one by one, endpoints first.
+
+**Endpoints.** `trace_api_hits` lists every server span with the service that called it (the service of its parent span; a call from the console's lab, or from outside the trace, is the test's). `api_hints` lists each endpoint called more than once:
+
+- **same call again**: one caller calls it twice or more during one step: a loop or a missing cache;
+- **called by several services**: the first caller could pass the answer along;
+- **called again later**: one caller calls it again in a later step: keep the first answer, or cache it.
+
+The test *Resource optimization: GET /api/hello, then the same greeting again* shows it for real: `GET /api/hello` called twice by the test, `GET /balance` of the bank partner twice by the storefront API, `customers` read 4 times and `bank_accounts` twice: 2 calls and 4 queries to spare.
+
+**Tables.** Each SQL span reading a table is one query on the database. Once the traces are read, every SQL span of the test is kept one by one (`span_accesses`, nothing merged), with the step it ran during; the test's own SQL counts as spans of `the test`. `optimization_hints` lists each table read more than once, with what to change, the strongest case first:
+
+- **same query again**: one service runs the same statement twice or more during one step: a loop of queries (an N+1) or a missing cache;
+- **read by several services**: the first service could pass what it read along with its call, so one read would do;
+- **read again by one service**: one service reads the table in another query or a later step: one read, or keeping what the first returned, would do.
+
+Writes are left out: writing twice may be what the test is about. The card says how many queries one read per table would spare, and draws each table's reads in order, each with the step it ran during.
+
+The ownership test shows it for real: `customers` is read three times for one customer, by the storefront API and the bank partner during the hello call, then again by the newsletter service: 2 queries to spare.
+
 ## Limits of the intersection
 
 - It never proves a table used only on some calls (a cache miss, a branch): such a table drops out like a colleague's.
@@ -112,5 +160,6 @@ Each order run places a real order for ada (a backpack, 249 in stock): it is liv
 
 - `src/quality_console/footprint.py`: the pure rules (tests and their steps, colleagues per run, counter difference, narrowing, SQL parsing, picking and reading a Tempo trace, drawing it as a path), unit tested.
 - `src/quality_console/footprint_lab.py`: the runs, one thread per experiment, kept in memory for the page to poll (`/devx/retro-footprint/experiments/<id>`).
+- `src/newsletter/`: the newsletter service, the one service deployed without its `team`.
 - `db/03-console-reader.sql`: the read-only account may read the table counters, nothing else of `performance_schema`.
 - `tests/integration/test_console_footprint_mysql.py`: real runs of the API in process and of the test's own SQL against a real MySQL (the pause cut to zero): the hello-then-SQL test narrows to its three tables, the SQL-only test to its two, the health check to none; the redirect test, the in-process console standing for both fronts, ties `customers` to the console's page.

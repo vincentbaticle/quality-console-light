@@ -22,6 +22,7 @@ The test's own SQL names its tables itself. This module holds the pure rules;
 the calls live in ``footprint_lab``.
 """
 
+from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 import random
@@ -100,8 +101,8 @@ WRITE_KEYWORDS = ("DELETE FROM", "INTO", "UPDATE")
 """Keywords naming a table the statement writes; the others name tables read."""
 
 
-TRACE_QUERY = '{{ resource.service.name = "hello-api" && name = "{name}" }}'
-"""TraceQL finding the traces holding one route of the storefront API."""
+TRACE_QUERY = '{{ resource.service.name = "{service}" && name = "{name}" }}'
+"""TraceQL finding the traces holding one route of an API."""
 
 WINDOW_QUERY = (
     '{ span.db.system = "mysql" && span.db.name = "mycompany" }'
@@ -115,6 +116,38 @@ FRONT_TRACE_QUERY = '{{ resource.service.name = "{service}" && name = "{name}" }
 
 THE_TEST = "the test"
 """Who runs a step: the test itself, as the path names it."""
+
+TEAM_ATTRIBUTE = "team"
+"""Resource attribute a team adds to its service's telemetry to own it: the
+observability platform files every span of the service under that team. A
+service deployed without it sends spans nobody owns."""
+
+OWNED = "owned"
+"""Ownership of a table some span of a declared team names."""
+
+ORPHAN = "orphan"
+"""Ownership of a table the test touched that no declared team's span names."""
+
+TEST_OWN = "test"
+"""Ownership of a table only the test's own SQL names: no service to own it."""
+
+SAME_QUERY = "same-query"
+"""Optimization hint: one service runs the same query again during one step."""
+
+SEVERAL_SERVICES = "several-services"
+"""Optimization hint: several services read the same table, one after the other."""
+
+SEVERAL_QUERIES = "several-queries"
+"""Optimization hint: one service reads a table again, in another query or step."""
+
+SAME_CALL = "same-call"
+"""Optimization hint: one caller calls the same endpoint again during one step."""
+
+SEVERAL_CALLERS = "several-callers"
+"""Optimization hint: several callers call the same endpoint."""
+
+CALLED_AGAIN = "called-again"
+"""Optimization hint: one caller calls the same endpoint again in a later step."""
 
 
 ENTRY_KINDS = {
@@ -137,6 +170,8 @@ class ApiCall:
         path: Path on the storefront API.
         body: JSON body, if any.
         follows_workflow: Whether the step lasts until the order workflow ends.
+        api: Which API: a key of the APIs the lab is given.
+        service: The service answering it, as its spans name it.
     """
 
     title: str
@@ -144,13 +179,15 @@ class ApiCall:
     path: str
     body: Mapping[str, object] | None = None
     follows_workflow: bool = False
+    api: str = "storefront"
+    service: str = "hello-api"
     kind: str = "api"
 
     @property
     def trace_query(self) -> str:
         """TraceQL query finding the call's trace in Tempo."""
         route = self.path.split("?", 1)[0]
-        return TRACE_QUERY.format(name=f"{self.method} {route}")
+        return TRACE_QUERY.format(service=self.service, name=f"{self.method} {route}")
 
 
 @dataclass(frozen=True)
@@ -210,6 +247,9 @@ SKIPPED = "skipped"
 
 DEMO_SERVICE = "hello-api"
 """The service a simulated API call answers from."""
+
+DEMO_TEAM = "demo-squad"
+"""The team every simulated service declares."""
 
 DEMO_RUN_MS = 2000
 """How long a simulated run lasts."""
@@ -275,10 +315,32 @@ class Demo:
     looping_runs: int = RUNS_PER_BATCH
 
     @property
+    def api_hits(self) -> list[ApiHit]:
+        """Every endpoint each simulated step calls: its own, then the ones behind."""
+        hits = []
+        for index, step in enumerate(self.steps):
+            if isinstance(step.step, ApiCall):
+                hits.append(ApiHit(index, DEMO_SERVICE, step.step.title, THE_TEST))
+            hits += [
+                ApiHit(index, service, route, step.service)
+                for service, route in step.behind
+            ]
+        return hits
+
+    @property
+    def spans(self) -> list[SpanAccess]:
+        """Every table each simulated step reads or writes, one span each."""
+        return [
+            SpanAccess(index, step.service, table, operation)
+            for index, step in enumerate(self.steps)
+            for table, operation in step.tables
+        ]
+
+    @property
     def accesses(self) -> list[TracedAccess]:
         """Every table the simulated traces name, by service."""
         found = {
-            TracedAccess(step.service, table, operation)
+            TracedAccess(step.service, table, operation, DEMO_TEAM)
             for step in self.steps
             for table, operation in step.tables
         }
@@ -328,6 +390,15 @@ class Target:
 
 HELLO = ApiCall("GET /api/hello?username=ada", "GET", "/api/hello?username=ada")
 """Greets ada: her name in the database, her balance from the bank partner."""
+
+NEWSLETTERS = ApiCall(
+    "GET /newsletters/ada",
+    "GET",
+    "/newsletters/ada",
+    api="newsletter",
+    service="newsletter-service",
+)
+"""ada's newsletters, from a service deployed without its team declared."""
 
 STOREFRONT = FrontVisit("Storefront: the welcome page", "storefront", "/")
 """The storefront's page, served by nginx: a static front, no trace."""
@@ -623,6 +694,23 @@ TARGETS = {
         ),
         window_ms=1500,
     ),
+    "orphan-tables": Target(
+        "orphan-tables",
+        "Ownership: GET /api/hello, then a service whose team forgot to declare it",
+        "The test greets ada through the API, whose team declared it, then asks"
+        " the newsletter service, deployed without its team: its tables reach"
+        " Grafana owned by nobody.",
+        (HELLO, NEWSLETTERS),
+        window_ms=1500,
+    ),
+    "repeat-hello": Target(
+        "repeat-hello",
+        "Resource optimization: GET /api/hello, then the same greeting again",
+        "The test greets ada twice in a row: every endpoint and every table"
+        " behind the call is used twice, where one call would do.",
+        (HELLO, HELLO),
+        window_ms=1500,
+    ),
     "hello-then-sql": Target(
         "hello-then-sql",
         "API using tables, then SQL: GET /api/hello, then ada's profile",
@@ -634,7 +722,8 @@ TARGETS = {
     **DEMO_TARGETS,
 }
 """What the page can run: API only, SQL only, API using tables, then both, the
-same seen from a front, and two simulated examples."""
+same seen from a front, a service whose team forgot to declare it, the same
+call twice, and the simulated examples."""
 
 
 @dataclass(frozen=True)
@@ -648,11 +737,189 @@ class TableHits:
 
 @dataclass(frozen=True)
 class TracedAccess:
-    """One SQL statement of the trace: which service ran it, on which table."""
+    """One SQL statement of the trace: which service ran it, on which table.
+
+    Attributes:
+        service: The service whose span it is.
+        table: The table.
+        operation: ``read`` or ``write``.
+        team: The team the service declares in its telemetry, empty when none.
+    """
 
     service: str
     table: str
     operation: str
+    team: str = ""
+
+
+@dataclass(frozen=True)
+class SpanAccess:
+    """One SQL span on a company table, kept with the step it ran during.
+
+    Unlike ``TracedAccess``, nothing is merged: two spans reading the same
+    table stay two, which is what the optimization hints count.
+
+    Attributes:
+        step: Index of the test's step the span ran during.
+        service: The service whose span it is, or ``the test`` for its own SQL.
+        table: The table.
+        operation: ``read`` or ``write``.
+        statement: The SQL statement, empty when unknown (simulated).
+    """
+
+    step: int
+    service: str
+    table: str
+    operation: str
+    statement: str = ""
+
+
+@dataclass(frozen=True)
+class Hint:
+    """A table read, or an endpoint called, more than once, and how once could do.
+
+    Attributes:
+        item: The table, or the endpoint's route.
+        kind: ``same-query``, ``several-services`` or ``several-queries`` for
+            a table; ``same-call``, ``several-callers`` or ``called-again`` for
+            an endpoint.
+        reads: How many times it was read or called during the test.
+        services: Who read or called it, in the order they first did.
+        steps: The steps it was used during, in order.
+        advice: What to change, in one sentence.
+        by: Each use in order, as ``(step, service)``.
+        of: ``table`` or ``api``.
+        owner: For an endpoint, the service answering it.
+    """
+
+    item: str
+    kind: str
+    reads: int
+    services: list[str]
+    steps: list[int]
+    advice: str
+    by: list[tuple[int, str]] = field(default_factory=list)
+    of: str = "table"
+    owner: str = ""
+
+    @property
+    def saved(self) -> int:
+        """The reads or calls doing it once would spare."""
+        return self.reads - 1
+
+
+@dataclass(frozen=True)
+class ApiHit:
+    """One endpoint answering during the test, and who called it.
+
+    Attributes:
+        step: Index of the test's step the call ran during.
+        service: The service answering.
+        route: The endpoint, as its server span names it.
+        caller: The service whose call it answers, or ``the test``.
+    """
+
+    step: int
+    service: str
+    route: str
+    caller: str
+
+
+def api_hints(hits: list[ApiHit]) -> list[Hint]:
+    """Find the endpoints a test calls more than once, the strongest case first.
+
+    The same call again during one step is a loop or a missing cache; several
+    callers of one endpoint could share its answer; one caller calling it again
+    in a later step could keep the first answer.
+
+    Args:
+        hits: Every endpoint answering during the test, in the order they did.
+
+    Returns:
+        One hint per endpoint called more than once, the most calls first.
+    """
+    hints = []
+    for service, route in dict.fromkeys((h.service, h.route) for h in hits):
+        calls = [h for h in hits if (h.service, h.route) == (service, route)]
+        if len(calls) <= 1:
+            continue
+        callers = list(dict.fromkeys(h.caller for h in calls))
+        steps = list(dict.fromkeys(h.step for h in calls))
+        counted = Counter((h.caller, h.step) for h in calls)
+        repeated = sorted(key for key, count in counted.items() if count > 1)
+        if repeated:
+            kind = SAME_CALL
+            advice = (
+                f"{repeated[0][0]} calls {route} again during one step: call it"
+                " once, or ask for everything in one call."
+            )
+        elif len(callers) > 1:
+            kind = SEVERAL_CALLERS
+            advice = (
+                f"{', '.join(callers)} each call {route}: the first could pass"
+                " the answer along, so one call would do."
+            )
+        else:
+            kind = CALLED_AGAIN
+            advice = (
+                f"{callers[0]} calls {route} again in a later step: keeping the"
+                " first answer (or caching it) would spare the call."
+            )
+        by = [(h.step, h.caller) for h in calls]
+        hints.append(
+            Hint(route, kind, len(calls), callers, steps, advice, by, "api", service)
+        )
+    return sorted(hints, key=lambda hint: -hint.reads)
+
+
+def optimization_hints(spans: list[SpanAccess]) -> list[Hint]:
+    """Find the tables a test reads more than once, the strongest case first.
+
+    A service running the same query again during one step is the clearest
+    waste (a loop of queries, a missing cache); several services reading the
+    same table means the first could pass what it read along; one service
+    reading it with several queries could fetch it all at once. Writes are
+    left out: writing twice may be what the test is about.
+
+    Args:
+        spans: Every SQL span of the test, in the order they ran.
+
+    Returns:
+        One hint per table read more than once, the most reads first.
+    """
+    hints = []
+    for table in COMPANY_TABLES:
+        reads = [s for s in spans if s.table == table and s.operation == "read"]
+        if len(reads) <= 1:
+            continue
+        services = list(dict.fromkeys(s.service for s in reads))
+        steps = list(dict.fromkeys(s.step for s in reads))
+        counted = Counter(
+            (s.service, s.step, s.statement) for s in reads if s.statement
+        )
+        repeated = sorted(key for key, count in counted.items() if count > 1)
+        if repeated:
+            service = repeated[0][0]
+            kind = SAME_QUERY
+            advice = (
+                f"{service} runs the same query on {table} again during one step:"
+                " run it once, or fetch every row in one query (an N+1 loop)."
+            )
+        elif len(services) > 1:
+            kind = SEVERAL_SERVICES
+            advice = (
+                f"{', '.join(services)} each read {table}: the first one could"
+                " pass what it read along with its call, so one read would do."
+            )
+        else:
+            kind = SEVERAL_QUERIES
+            advice = (
+                f"{services[0]} reads {table} {len(reads)} times: one query, or"
+                " keeping what the first one returned, would do."
+            )
+        by = [(s.step, s.service) for s in reads]
+        hints.append(Hint(table, kind, len(reads), services, steps, advice, by))
+    return sorted(hints, key=lambda hint: -hint.reads)
 
 
 @dataclass(frozen=True)
@@ -789,6 +1056,8 @@ class Experiment:
     trace_ids: list[str] = field(default_factory=list)
     traced: list[TracedAccess] = field(default_factory=list)
     traced_steps: dict[int, list[PathNode]] = field(default_factory=dict)
+    spans: list[SpanAccess] = field(default_factory=list)
+    api_hits: list[ApiHit] = field(default_factory=list)
     looping: list[str] = field(default_factory=list)
     trace_waited: float = 0.0
     trace_timeout: float = 1.0
@@ -1013,6 +1282,71 @@ class Experiment:
         counted(self.found)
         return nodes
 
+    @property
+    def ownership(self) -> list[dict[str, Any]]:
+        """Which team owns each table of the final answer, as the spans declare it.
+
+        A team owns a table when a span of its service names the table: the
+        observability platform files the span, so the table, under that team.
+        A table the test touched with no such span is an orphan: its spans
+        come from services declaring no team, or there is no span at all (the
+        database counted it, nothing traced). A table only the test's own SQL
+        names has no service to own it. Likely colleagues are left out.
+
+        Returns:
+            One entry per table, orphans first, empty until the final answer
+            is ready or when no trace was read.
+        """
+        if not self.final or not self.traced:
+            return []
+        own_sql = {access.table for access in self.target.sql_accesses}
+        tables = [
+            n["label"]
+            for n in self.final
+            if n["kind"] == "table" and n["source"] != "colleague"
+        ]
+        entries = []
+        for table in dict.fromkeys(tables):
+            spans = [access for access in self.traced if access.table == table]
+            teams = sorted({access.team for access in spans if access.team})
+            services = sorted({access.service for access in spans})
+            declared = sorted({access.service for access in spans if access.team})
+            if teams:
+                status, why = OWNED, f"spans of {', '.join(declared)}"
+            elif spans:
+                status = ORPHAN
+                why = f"spans of {', '.join(services)}, no team declared"
+            elif table in own_sql:
+                status, why = TEST_OWN, "named by the test's own SQL only"
+            else:
+                status = ORPHAN
+                why = "counted by the database, no span names it"
+            entries.append(
+                {"table": table, "status": status, "teams": teams, "why": why}
+            )
+        return sorted(entries, key=lambda entry: entry["status"] != ORPHAN)
+
+    @property
+    def hints(self) -> list[Hint]:
+        """Where the test calls an endpoint or reads a table more than once.
+
+        The endpoints first, then the tables: the server spans of the traces,
+        the SQL spans, and the test's own SQL as spans of ``the test``, in the
+        order of the steps. Empty until the runs are over and the traces read.
+        """
+        if len(self.runs) < RUNS or not self.checked:
+            return []
+        apis = api_hints(sorted(self.api_hits, key=lambda hit: hit.step))
+        own = [
+            SpanAccess(index, THE_TEST, table, operation, step.statement)
+            for index, step in enumerate(self.target.steps)
+            if isinstance(step, SqlQuery)
+            for table, operation in tables_in_statement(step.statement)
+        ]
+        return apis + optimization_hints(
+            sorted(self.spans + own, key=lambda span: span.step)
+        )
+
     def window_detail(self, table: str) -> str:
         """What the run windows say of a table: who sent its SQL, how often."""
         seen = next((w for w in self.windows if w.table == table), None)
@@ -1078,6 +1412,8 @@ class Experiment:
             "checked": self.checked,
             "path": [vars(node) for node in self.path],
             "final": self.final,
+            "ownership": self.ownership,
+            "hints": [{**vars(hint), "saved": hint.saved} for hint in self.hints],
             "window": {
                 "state": self.window_state,
                 "phase": self.window_phase,
@@ -1294,19 +1630,24 @@ def _attribute(attributes: list[dict[str, Any]], key: str) -> str | None:
     return None
 
 
-def _spans(trace: Mapping[str, Any]) -> list[tuple[str, dict[str, Any]]]:
-    """Every span of a trace with its service, in the order they started."""
+def _spans(trace: Mapping[str, Any]) -> list[tuple[str, str, dict[str, Any]]]:
+    """Every span of a trace with its service and team, in the order they started.
+
+    The team is the ``team`` resource attribute, empty when the service
+    declares none.
+    """
     spans = [
         (
             _attribute(batch.get("resource", {}).get("attributes", []), "service.name"),
+            _attribute(batch.get("resource", {}).get("attributes", []), TEAM_ATTRIBUTE),
             span,
         )
         for batch in trace.get("batches", [])
         for scope in batch.get("scopeSpans", [])
         for span in scope.get("spans", [])
     ]
-    spans.sort(key=lambda pair: int(pair[1].get("startTimeUnixNano", 0)))
-    return [(service or "unknown", span) for service, span in spans]
+    spans.sort(key=lambda spanned: int(spanned[2].get("startTimeUnixNano", 0)))
+    return [(service or "unknown", team or "", span) for service, team, span in spans]
 
 
 def _span_tables(span: Mapping[str, Any]) -> list[tuple[str, str]]:
@@ -1320,6 +1661,56 @@ def _span_tables(span: Mapping[str, Any]) -> list[tuple[str, str]]:
     return tables_in_statement(statement)
 
 
+def span_accesses(trace: Mapping[str, Any], step: int) -> list[SpanAccess]:
+    """List every SQL span of a trace on a company table, one by one, in order.
+
+    Args:
+        trace: The JSON of Tempo's ``/api/traces/<id>``, OTLP batches.
+        step: Index of the test's step the trace belongs to.
+
+    Returns:
+        One access per span and table, nothing merged.
+    """
+    return [
+        SpanAccess(
+            step,
+            service,
+            table,
+            operation,
+            _attribute(span.get("attributes", []), "db.statement") or "",
+        )
+        for service, _, span in _spans(trace)
+        for table, operation in _span_tables(span)
+    ]
+
+
+def trace_api_hits(trace: Mapping[str, Any], step: int) -> list[ApiHit]:
+    """List every endpoint answering in a trace, with who called it, in order.
+
+    A server span answers a call; the service of its parent span made it. The
+    lab plays the test, so a call from the console's lab, or from outside the
+    trace, is the test's.
+
+    Args:
+        trace: The JSON of Tempo's ``/api/traces/<id>``, OTLP batches.
+        step: Index of the test's step the trace belongs to.
+
+    Returns:
+        One hit per server span.
+    """
+    spans = _spans(trace)
+    owners = {span.get("spanId"): service for service, _, span in spans}
+    hits = []
+    for service, _, span in spans:
+        if ENTRY_KINDS.get(span.get("kind", "")) != "api":
+            continue
+        caller = owners.get(span.get("parentSpanId"), THE_TEST)
+        if caller == LAB_SERVICE:
+            caller = THE_TEST
+        hits.append(ApiHit(step, service, span.get("name", ""), caller))
+    return hits
+
+
 def traced_accesses(trace: Mapping[str, Any]) -> list[TracedAccess]:
     """List the company tables a trace's SQL spans touch.
 
@@ -1327,11 +1718,12 @@ def traced_accesses(trace: Mapping[str, Any]) -> list[TracedAccess]:
         trace: The JSON of Tempo's ``/api/traces/<id>``, OTLP batches.
 
     Returns:
-        One access per service, table and operation, sorted.
+        One access per service, table and operation, with the service's team,
+        sorted.
     """
     accesses = {
-        TracedAccess(service, table, operation)
-        for service, span in _spans(trace)
+        TracedAccess(service, table, operation, team)
+        for service, team, span in _spans(trace)
         for table, operation in _span_tables(span)
     }
     return sorted(accesses, key=lambda a: (a.service, a.table, a.operation))
@@ -1355,7 +1747,7 @@ def trace_path(trace: Mapping[str, Any]) -> list[PathNode]:
     entries: dict[str, PathNode] = {}
     current: str | None = None
     seen: set[str] = set()
-    for service, span in _spans(trace):
+    for service, _, span in _spans(trace):
         kind = ENTRY_KINDS.get(span.get("kind", ""))
         if kind:
             entries[service] = PathNode(kind, span.get("name", ""), service)

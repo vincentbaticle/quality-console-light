@@ -19,6 +19,7 @@ from gherkin_runner.main import create_app as create_runner
 from hello_api.main import create_app as create_storefront
 from identity.emails import Mailer
 from identity.main import create_app as create_identity
+from newsletter.main import create_app as create_newsletter
 
 ROOT = Path(__file__).resolve().parent.parent
 """Root of the repository."""
@@ -33,6 +34,7 @@ SERVICES: dict[str, Callable[[], FastAPI]] = {
     "identity-openapi.yaml": lambda: create_identity(
         NOWHERE, Mailer("localhost", 25), "http://localhost:8080", "unused"
     ),
+    "newsletter-openapi.yaml": lambda: create_newsletter(NOWHERE),
     "gherkin-runner-openapi.yaml": lambda: create_runner(ROOT, None, "local", "local"),
 }
 """Each contract file and how to build the service it describes."""

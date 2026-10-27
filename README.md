@@ -163,7 +163,7 @@ The API reads one table (`customers`), the bank another (`bank_accounts`); the o
 
 In production, services send their traces, metrics and logs with OpenTelemetry (OTLP) to an observability platform such as Tsuga. Locally, `mise run up` starts a free all-in-one stand-in, [Grafana's `otel-lgtm`](https://github.com/grafana/docker-otel-lgtm) (an OpenTelemetry collector, Tempo for traces, Prometheus for metrics, Loki for logs, Grafana to look at them), in one container named `observability`.
 
-Nothing in the code knows about it. Every service starts through `opentelemetry-instrument` (see the two `Dockerfile`s and the `console` command), which instruments FastAPI, httpx, Redis and PyMySQL automatically, and reads the standard `OTEL_*` variables of `docker-compose.yml`: OTLP over HTTP on port 4318, a `service.name` each (`hello-api`, `order-worker`, `identity-service`, `bank-partner`, `quality-console`). Pointing them at a real platform only changes the endpoint.
+Nothing in the code knows about it. Every service starts through `opentelemetry-instrument` (see the two `Dockerfile`s and the `console` command), which instruments FastAPI, httpx, Redis and PyMySQL automatically, and reads the standard `OTEL_*` variables of `docker-compose.yml`: OTLP over HTTP on port 4318, a `service.name` each (`hello-api`, `order-worker`, `identity-service`, `bank-partner`, `quality-console`, `newsletter-service`) and, through `OTEL_RESOURCE_ATTRIBUTES`, the `team` owning it, except the newsletter service, whose team forgot it ([retro-footprint](docs/retro-footprint.md) shows its orphan tables). Pointing them at a real platform only changes the endpoint.
 
 To see a call:
 

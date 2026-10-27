@@ -27,7 +27,7 @@ For a QA engineer, it changes three things: a failing end-to-end test points to 
 ## How the project is wired
 
 - The services (`hello-api`, `bank-partner`, `order-worker`, `identity-service`) and the Quality Console start with `opentelemetry-instrument` in their image. It instruments FastAPI, httpx, Redis, PyMySQL and the RabbitMQ client automatically: there is no telemetry line in `src/` or `partner/`.
-- `docker-compose.yml` gives them the standard variables: `OTEL_EXPORTER_OTLP_ENDPOINT` (OTLP over HTTP, port 4318), `OTEL_SERVICE_NAME`, and which signals to export (traces and metrics; logs stay on `docker compose logs`).
+- `docker-compose.yml` gives them the standard variables: `OTEL_EXPORTER_OTLP_ENDPOINT` (OTLP over HTTP, port 4318), `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` (`team=<owner>`, the team owning the service, missing on purpose on `newsletter-service`), and which signals to export (traces and metrics; logs stay on `docker compose logs`).
 - The `observability` service is [`grafana/otel-lgtm`](https://github.com/grafana/docker-otel-lgtm): an OpenTelemetry collector, Tempo (traces), Prometheus (metrics), Loki (logs) and Grafana (the UI), in one container. It plays the role Tsuga plays in production.
 - In the tests, `OTEL_SDK_DISABLED=true` turns the SDK off: no collector runs in a test.
 - Grafana is only the screen. The services know nothing about it: they speak OpenTelemetry (OTLP) to the collector inside `observability`, which stores the traces in Tempo and the metrics in Prometheus. Swap the container for Tsuga's endpoint and the same data lands there; Grafana's login is switched off in `docker-compose.yml` because nobody needs an account on a laptop.

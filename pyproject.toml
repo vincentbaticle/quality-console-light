@@ -101,5 +101,5 @@ markers = [
 ]
 
 [tool.pdm.build]
-includes = ["src/hello_api", "src/company_db", "src/quality_console", "src/test_results", "src/order_workflow", "src/catalog", "src/identity", "src/gherkin_runner", "src/quality_mcp", "src/company_secrets"]
+includes = ["src/hello_api", "src/company_db", "src/quality_console", "src/test_results", "src/order_workflow", "src/catalog", "src/identity", "src/gherkin_runner", "src/quality_mcp", "src/company_secrets", "src/newsletter"]
 package-dir = "src"

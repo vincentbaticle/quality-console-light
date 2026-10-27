@@ -52,6 +52,9 @@ RUNNER_CONNECT_RETRIES = 2
 API_URL_VARIABLE = "API_URL"
 """Root URL of the storefront API, which the retro-footprint calls."""
 
+API_URL_VARIABLES = {"newsletter": "NEWSLETTER_URL"}
+"""Root URL of each other API retro-footprint may call, by API name."""
+
 FRONT_URL_VARIABLES = {
     "storefront": "FRONT_URL",
     "quality-console": "CONSOLE_URL",
@@ -93,6 +96,7 @@ class ConsoleSettings:
         api: HTTP client of the storefront API, for the retro-footprint.
         tempo: HTTP client of Tempo, ``None`` when no trace backend runs.
         fronts: HTTP client of each front, for retro-footprint, by name.
+        apis: HTTP client of each other API, for retro-footprint, by name.
         vault: HTTP client of Vault with the console's token, None without one.
     """
 
@@ -113,6 +117,7 @@ class ConsoleSettings:
     api: httpx.Client
     tempo: httpx.Client | None
     fronts: dict[str, httpx.Client] = field(default_factory=dict)
+    apis: dict[str, httpx.Client] = field(default_factory=dict)
     vault: httpx.Client | None = None
 
 
@@ -159,6 +164,13 @@ def settings_from_env() -> ConsoleSettings:
                 base_url=os.environ[variable], timeout=CALL_TIMEOUT_SECONDS
             )
             for name, variable in FRONT_URL_VARIABLES.items()
+            if os.environ.get(variable)
+        },
+        apis={
+            name: httpx.Client(
+                base_url=os.environ[variable], timeout=CALL_TIMEOUT_SECONDS
+            )
+            for name, variable in API_URL_VARIABLES.items()
             if os.environ.get(variable)
         },
         vault=httpx.Client(

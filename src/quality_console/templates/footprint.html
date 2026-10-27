@@ -99,6 +99,34 @@
   .seen-rows li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .during { font-size: 12px; color: var(--fg-secondary); }
   .stop.marker { background: var(--bg-subtle); border-style: dotted; color: var(--fg-secondary); }
+  .tbl.orphan { border: 2px solid var(--negative); background: var(--negative-bg); }
+  .tbl.orphan .name { color: var(--negative); }
+  .tbl.test-own { border-style: dashed; }
+  .team { flex: none; padding: 1px 8px; border-radius: 999px; font: 700 10.5px var(--font); background: var(--positive-bg); color: var(--positive); }
+  .team.none { background: var(--negative); color: var(--bg-surface); text-transform: uppercase; }
+  .team.test { background: var(--bg-subtle); color: var(--fg-secondary); }
+  .src.orphan { background: var(--negative); color: var(--bg-surface); }
+  .stop.orphan { border: 2px solid var(--negative); }
+  .ownership-groups { display: grid; gap: 14px; }
+  .ownership-groups h3 { margin: 0 0 8px; font-size: 13px; }
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 0 0 16px; }
+  .features a { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--border); border-left: 4px solid var(--brand); border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--fg); text-decoration: none; box-shadow: var(--shadow); }
+  .features a:hover { border-color: var(--brand); }
+  .features strong { display: block; font-size: 14px; }
+  .features small { color: var(--fg-secondary); font-size: 12px; }
+  .feature-no { flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 999px; background: var(--brand); color: var(--bg-surface); font: 700 13px var(--font); }
+  .card.feature { border-left: 4px solid var(--brand); }
+  .card.feature .section-head { align-items: center; margin-bottom: 4px; }
+  .card.feature h2 { display: flex; align-items: center; gap: 10px; font-size: 18px; text-transform: none; letter-spacing: 0; color: var(--fg); }
+  .feature-tag { margin: 0 0 14px; color: var(--fg-secondary); font-size: 13px; }
+  .hints { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+  .hints li { padding: 10px 12px; border: 1px solid var(--border); border-left: 4px solid var(--warning); border-radius: var(--radius-sm); }
+  .hints li.same-query { border-left-color: var(--negative); }
+  .hints .hint-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; }
+  .hints .reads { display: flex; flex-wrap: wrap; align-items: center; row-gap: 8px; margin: 6px 0; }
+  .hints .advice { margin: 6px 0 0; font-size: 13px; }
+  .saving { padding: 1px 8px; border-radius: 999px; font: 700 11px var(--font); background: var(--warning-bg); color: var(--warning); }
+  .ownership-groups .tables-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
 </style>
 <nav class="crumbs"><a href="/devx">DevX</a> / retro-footprint</nav>
 <div class="page-head">
@@ -126,6 +154,8 @@
   <p>Tables tagged <span class="badge live">live</span> are written by the storefront (orders, stock, invoices, payments, audit); <span class="badge static">static</span> ones are loaded once and only read.</p>
   <p><strong>The final answer</strong> merges the two witnesses once the runs are over and the traces read: the path the traces draw, each table marked <em>named + counted</em> (both agree: sure), <em>named, not every run</em> (the traces name it, some run did not see it move: a cache, a branch) or <em>counted only, no trace</em> (the database counted it in every run, no trace names it: a trigger, an old service), placed after the step it moved during. Each witness stays folded under it, one click away.</p>
   <p>On a path, items of one kind in a row (3 or more: tables read by one API, fronts one after the other) fold into one stop, drawn as a stack, saying how many and what they are; click it to unfold, <em>fold</em> to fold back. In the grid, every front, API and table says in how many runs it was seen; when there are too many, the ones seen in the most runs stay and the others fold into a <em>+N</em> tile, click it to show them, <em>Show fewer</em> to fold them back. To keep the page fast, at most 150 tiles are drawn, the page draws again only when a run ends, and hidden items are never built.</p>
+  <p><strong>Ownership</strong>: each service declares, in its telemetry, the team owning it (the <code>team</code> resource attribute, set in <code>OTEL_RESOURCE_ATTRIBUTES</code>); the observability platform files every span of the service under that team, and the tables its SQL spans name with it. Once the final answer is ready, each table of the test is <em>owned</em> (a span of a declared team names it) or an <span class="badge failed">orphan</span>: the database counted it, but its spans come from a service declaring no team, or there is no span at all. Searching Grafana by team never finds an orphan. The test <em>Ownership: … a service whose team forgot to declare it</em> shows it for real: the newsletter service is deployed without its <code>team</code>.</p>
+  <p><strong>Resource optimization</strong>: once the traces are read, every endpoint answering during the test (a server span, with the service that called it) is counted one by one: an endpoint called more than once is listed as <em>same call again</em> (during one step: a loop, a missing cache), <em>called by several services</em> (the first could pass the answer along) or <em>called again later</em> (keep the first answer). The test <em>Resource optimization: GET /api/hello, then the same greeting again</em> shows it for real. Every SQL span of the test is counted the same way, with the step it ran during and the test's own SQL included. A table read more than once is listed with what to change: <em>same query again</em> (a service runs the same query twice during a step: a loop of queries or a missing cache), <em>read by several services</em> (the first could pass what it read along with its call), <em>read again by one service</em> (in another query or a later step: one read would do). Writes are left out. The ownership test is a good example: <code>customers</code> is read by the storefront API, the bank partner and the newsletter service, three times for one customer.</p>
   <p>The two <strong>Demo</strong> tests are simulated: nothing is called, the runs are drawn from a fixed seed, so they look the same every time. <em>Too many items</em> goes through 5 fronts, a dozen APIs and almost every table, some steps played in only some runs. <em>Hard to tell for 7 runs</em> shares its minute with a nightly job reading 8 tables, 3 of them the test's own: until run 8 the job's tables are seen as often as the test's, then they drop out. <em>Many of a kind</em> sends the user through 10 fronts, then one export reads 29 tables while a trigger nobody traces writes the 30th: the stacks, and a table <em>counted only</em>.</p>
 </details>
 {% if experiment %}
@@ -134,9 +164,25 @@
   <progress id="progress" max="100" value="0" aria-label="Experiment progress"></progress>
   <ol class="stages" id="stages" aria-label="Stages"></ol>
 </section>
-<section class="card">
-  <div class="section-head"><h2>Path of the test</h2><span class="hint" id="path-hint">Drawn after the first run.</span></div>
+<nav class="features" aria-label="The three answers of retro-footprint">
+  <a href="#path-card"><span class="feature-no">1</span><span><strong>Path of the test</strong><small>Every front, API and table it goes through, in order.</small></span></a>
+  <a href="#ownership-card"><span class="feature-no">2</span><span><strong>Ownership</strong><small>Which team owns each table in Grafana, and the orphans.</small></span></a>
+  <a href="#optimization-card"><span class="feature-no">3</span><span><strong>Resource optimization</strong><small>Endpoints called and tables read more than once, where once would do.</small></span></a>
+</nav>
+<section class="card feature" id="path-card">
+  <div class="section-head"><h2><span class="feature-no">1</span>Path of the test</h2><span class="hint" id="path-hint">Drawn after the first run.</span></div>
+  <p class="feature-tag">Every front, API and table the test goes through, in the order it happened: the traces say who did what, the database's count checks that nothing escaped them.</p>
   <div id="paths"></div>
+</section>
+<section class="card feature" id="ownership-card">
+  <div class="section-head"><h2><span class="feature-no">2</span>Ownership: which team owns each table in Grafana</h2><span class="hint">From the <code>team</code> each service declares in its telemetry.</span></div>
+  <p class="feature-tag">A table no declared team's span names is an orphan: searching Grafana by team never finds it.</p>
+  <div id="ownership"><p class="hint">Comes with the final answer.</p></div>
+</section>
+<section class="card feature" id="optimization-card">
+  <div class="section-head"><h2><span class="feature-no">3</span>Resource optimization: endpoints and tables used more than once</h2><span class="hint">From the server and SQL spans of the traces, one by one.</span></div>
+  <p class="feature-tag">Each server span is one call to an endpoint, each SQL span reading a table one query on the database. An endpoint called again, or a table read again, by the same service or by the next one, is work doing it once could have spared.</p>
+  <div id="optimization"><p class="hint">Comes once the traces are read.</p></div>
 </section>
 <section class="card">
   <div class="section-head"><h2>Fronts, APIs and tables used so far</h2><span class="hint" id="used-hint">Only the tables a run saw are listed, not the 30.</span></div>
@@ -274,7 +320,76 @@
       const shown = stop(node);
       const source = SOURCES[node.source];
       if (source) { shown.classList.add(`src-${node.source}`); shown.append(el("span", { class: `src ${node.source}`, title: source[1] }, source[0])); }
+      if (node.kind === "table" && orphans().has(node.label)) { shown.classList.add("orphan"); shown.append(el("span", { class: "src orphan", title: "No team owns this table in Grafana: see Ownership" }, "orphan")); }
       return shown;
+    }
+    const orphans = () => new Set((state.ownership ?? []).filter((o) => o.status === "orphan").map((o) => o.table));
+
+    function drawOptimization() {
+      const box = document.getElementById("optimization");
+      const hints = state.hints;
+      if (!hints.length) {
+        const text = !state.runs_over || (!state.checked && !state.done) ? "Comes once the runs are over and the traces read."
+          : !state.checked ? "No trace found: the server and SQL spans are in the traces, so nothing to count here."
+          : "✓ Nothing used twice: every endpoint the test goes through is called once, every table read once.";
+        box.replaceChildren(el("p", { class: state.checked ? "check-result ok" : state.done ? "hint" : "pulse-text" }, text));
+        return;
+      }
+      const stepTitle = (i) => state.steps[i]?.title ?? `step ${i + 1}`;
+      const KINDS = {
+        "same-query": "same query again", "several-services": "read by several services", "several-queries": "read again by one service",
+        "same-call": "same call again", "several-callers": "called by several services", "called-again": "called again later",
+      };
+      const WORST = new Set(["same-query", "same-call"]);
+      const unit = (h, n) => (h.of === "api" ? (n === 1 ? "call" : "calls") : n === 1 ? "query" : "queries");
+      const item = (h) => el("li", { class: WORST.has(h.kind) ? "same-query" : "" },
+        el("div", { class: "hint-head" }, icon(h.of), el("strong", {}, h.item), ...(h.owner ? [el("small", {}, h.owner)] : []),
+          el("span", { class: `src ${WORST.has(h.kind) ? "orphan" : "counted"}` }, KINDS[h.kind]),
+          el("span", { class: "saving" }, `${h.of === "api" ? "called" : "read"} ${h.reads} times, ${h.saved} ${unit(h, h.saved)} to spare`)),
+        el("div", { class: "reads" }, ...h.by.flatMap(([step, service], i) => {
+          const use = stop({ kind: service === "the test" ? "sql" : "api", label: service, detail: `${h.of === "api" ? "call" : "read"} ${i + 1}, step ${step + 1}: ${stepTitle(step)}` });
+          return i ? [hop({}), use] : [use];
+        })),
+        el("p", { class: "advice" }, h.advice));
+      const apis = hints.filter((h) => h.of === "api");
+      const tables = hints.filter((h) => h.of === "table");
+      const spared = (list) => list.reduce((sum, h) => sum + h.saved, 0);
+      const parts = [];
+      if (apis.length) parts.push(`${spared(apis)} ${spared(apis) === 1 ? "call" : "calls"} to spare on ${apis.length} ${apis.length === 1 ? "endpoint" : "endpoints"}`);
+      if (tables.length) parts.push(`${spared(tables)} ${spared(tables) === 1 ? "query" : "queries"} to spare on ${tableCount(tables.length)}`);
+      const group = (title, list) => (list.length ? [el("h3", { style: "margin:14px 0 8px;font-size:13px" }, title), el("ul", { class: "hints" }, ...list.map(item))] : []);
+      box.replaceChildren(
+        el("output", { class: "banner skipped" }, el("strong", {}, `💡 ${parts.join(", ")}.`), " Doing each once would do."),
+        ...group(`Endpoints called more than once (${apis.length})`, apis),
+        ...group(`Tables read more than once (${tables.length})`, tables));
+    }
+
+    function drawOwnership() {
+      const box = document.getElementById("ownership");
+      const owned = state.ownership;
+      if (!owned.length) {
+        const text = !state.done ? "Comes with the final answer, once the runs are over and the traces read."
+          : !state.traced.length ? "No span read for this test: the teams are declared in the traces, so ownership stays unknown here."
+          : "No table in the final answer.";
+        box.replaceChildren(el("p", { class: state.done ? "hint" : "pulse-text" }, text));
+        return;
+      }
+      const lost = owned.filter((o) => o.status === "orphan");
+      const teams = [...new Set(owned.flatMap((o) => o.teams))];
+      const banner = lost.length
+        ? el("output", { class: "banner failed" }, el("strong", {}, `⚠ ${lost.length} orphan ${lost.length === 1 ? "table" : "tables"}: ${lost.map((o) => o.table).join(", ")}.`),
+          " The database counted them in every run, but no span of a team that declared itself names them: searching Grafana by team never finds them. Ask the team of the service touching them to declare its ", el("code", {}, "team"), ".")
+        : el("output", { class: "banner passed" }, `✓ Every table the test touched is owned in Grafana, by ${teams.join(", ")}.`);
+      const tile = (o) => el("span", { class: `tbl ${o.status === "orphan" ? "orphan" : o.status === "test" ? "test-own" : ""}`, title: `${o.table}: ${o.why}` }, icon("table"),
+        el("span", { class: "what" }, el("span", { class: "name" }, o.table), el("span", { class: "meta" }, o.why)),
+        ...(o.status === "owned" ? o.teams.map((t) => el("span", { class: "team" }, t)) : [el("span", { class: `team ${o.status === "orphan" ? "none" : "test"}` }, o.status === "orphan" ? "no team" : "the test")]));
+      const group = (title, items) => (items.length ? [el("div", {}, el("h3", {}, title), el("div", { class: "tables-grid" }, ...items.map(tile)))] : []);
+      const queries = teams.map((t) => el("code", { class: "chip" }, `{ resource.team = "${t}" && span.db.name = "mycompany" }`));
+      box.replaceChildren(banner, el("div", { class: "ownership-groups" },
+        ...group(`Orphans, owned by no team (${lost.length})`, lost),
+        ...group(`Owned by a team (${owned.filter((o) => o.status === "owned").length})`, owned.filter((o) => o.status === "owned")),
+        ...group("Read by the test's own SQL only", owned.filter((o) => o.status === "test"))),
+        el("p", { class: "path-hint", style: "margin-top:12px" }, "In Grafana (Explore, Tempo), each team finds its tables with: ", ...queries, ". An orphan table is in none of these answers."));
     }
     function drawn(nodes, scope, hops = true) {
       const parts = stack(distinct(nodes), scope).flatMap((n, i) => {
@@ -487,7 +602,7 @@
       drawProgress();
       drawStages();
       const changed = [state.runs.length, state.checked, state.done, state.trace_phase, state.window.state].join("|");
-      if (changed !== lastDrawn) { lastDrawn = changed; drawPaths(); drawGrid(); }
+      if (changed !== lastDrawn) { lastDrawn = changed; drawPaths(); drawGrid(); drawOwnership(); drawOptimization(); }
       const tabsKey = `${changed}|${state.pause_left}`;
       if (tabsKey !== lastTabs) { lastTabs = tabsKey; drawTabs(); }
       if (!state.done) setTimeout(poll, 700);

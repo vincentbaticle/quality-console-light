@@ -50,8 +50,10 @@ from quality_console.footprint import (
     narrow,
     new_traceparent,
     pick_trace,
+    span_accesses,
     span_count,
     touched,
+    trace_api_hits,
     trace_id_of,
     trace_path,
     traced_accesses,
@@ -125,6 +127,7 @@ class FootprintLab:
         pause_seconds: float = PAUSE_SECONDS,
         fronts: Mapping[str, httpx.Client] | None = None,
         demo_run_ms: int = DEMO_RUN_MS,
+        apis: Mapping[str, httpx.Client] | None = None,
     ) -> None:
         """Wire the lab.
 
@@ -136,9 +139,11 @@ class FootprintLab:
             pause_seconds: The pause between the two batches of runs.
             fronts: Client of each front a test may open a page of, by name.
             demo_run_ms: How long a simulated run lasts.
+            apis: Client of each other API a test may call, by name; the
+                storefront API is ``api``.
         """
         self._database = database
-        self._api = api
+        self._apis = {"storefront": api, **(apis or {})}
         self._tempo = tempo
         self._trace_timeout = trace_timeout
         self._pause_seconds = pause_seconds
@@ -313,6 +318,8 @@ class FootprintLab:
             experiment.runs.append(run)
         experiment.traced_steps = {n: s.path for n, s in enumerate(demo.steps)}
         experiment.traced = demo.accesses
+        experiment.spans = demo.spans
+        experiment.api_hits = demo.api_hits
         experiment.trace_phase = "Simulated traces read"
         experiment.window_state = "skipped"
         experiment.window_phase = "Simulated: no Tempo to read"
@@ -485,7 +492,10 @@ class FootprintLab:
         Returns:
             The status of the call, and the id of its trace.
         """
-        response = self._api.request(
+        api = self._apis.get(call.api)
+        if api is None:
+            raise RuntimeError(f"No API configured under the name {call.api}")
+        response = api.request(
             call.method,
             call.path,
             json=call.body,
@@ -501,7 +511,8 @@ class FootprintLab:
 
     def _workflow_over(self, workflow_id: str) -> bool:
         """Whether the order workflow has ended."""
-        workflow = self._api.get(f"/api/orders/workflows/{workflow_id}").json()
+        storefront = self._apis["storefront"]
+        workflow = storefront.get(f"/api/orders/workflows/{workflow_id}").json()
         return workflow.get("status") != "running"
 
     def _search_safely(self, experiment: Experiment, calls: list[StepCall]) -> None:
@@ -521,6 +532,8 @@ class FootprintLab:
                         key=lambda a: (a.service, a.table, a.operation),
                     )
                     experiment.traced_steps[index] = trace_path(trace)
+                    experiment.spans += span_accesses(trace, index)
+                    experiment.api_hits += trace_api_hits(trace, index)
             if experiment.checked:
                 experiment.trace_phase = "Trace read"
         except (httpx.HTTPError, ValueError) as error:

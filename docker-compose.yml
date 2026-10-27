@@ -141,6 +141,7 @@ services:
     environment:
       <<: [*database, *telemetry, *vault-files]
       OTEL_SERVICE_NAME: hello-api
+      OTEL_RESOURCE_ATTRIBUTES: team=storefront-squad
       REDIS_URL: redis://redis:6379/0
       PARTNER_URL: http://partner:8000
       RABBITMQ_URL: amqp://rabbitmq:5672/%2F
@@ -169,6 +170,7 @@ services:
     environment:
       <<: [*database, *telemetry, *vault-files]
       OTEL_SERVICE_NAME: order-worker
+      OTEL_RESOURCE_ATTRIBUTES: team=checkout-squad
       RABBITMQ_URL: amqp://rabbitmq:5672/%2F
       DB_CREDENTIALS_FILE: /vault/secrets/order-worker/db.env
       RABBITMQ_CREDENTIALS_FILE: /vault/secrets/order-worker/rabbitmq.env
@@ -193,6 +195,7 @@ services:
       DB_NAME: identity
       DB_CREDENTIALS_FILE: /vault/secrets/identity-service/db.env
       OTEL_SERVICE_NAME: identity-service
+      OTEL_RESOURCE_ATTRIBUTES: team=identity-squad
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
       PUBLIC_URL: http://localhost:8080
@@ -209,11 +212,24 @@ services:
       observability:
         condition: service_started
 
+  newsletter:
+    build: .
+    command: ["opentelemetry-instrument", "uvicorn", "newsletter.main:app_from_environment", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: [*database, *telemetry]
+      OTEL_SERVICE_NAME: newsletter-service
+    depends_on:
+      mysql:
+        condition: service_healthy
+      observability:
+        condition: service_started
+
   partner:
     build: ./partner
     environment:
       <<: [*database, *telemetry, *bank-partner-key]
       OTEL_SERVICE_NAME: bank-partner
+      OTEL_RESOURCE_ATTRIBUTES: team=partners-squad
     ports:
       - "8090:8000"
     depends_on:
@@ -242,6 +258,7 @@ services:
       DB_USER: console_reader
       DB_PASSWORD: reader
       OTEL_SERVICE_NAME: quality-console
+      OTEL_RESOURCE_ATTRIBUTES: team=qa-core
       RESULTS_BUCKET: test-results
       STORAGE_EMULATOR_HOST: http://gcs:4443
       PRODUCT_URL: http://localhost:8080
@@ -261,6 +278,7 @@ services:
       AUDIO_ASSETS_DIR: /repo/audio-assets
       RUNNER_URL: http://runner:8000
       API_URL: http://api:8000
+      NEWSLETTER_URL: http://newsletter:8000
       FRONT_URL: http://front
       CONSOLE_URL: http://localhost:8000
       TEMPO_URL: http://observability:3200
@@ -282,6 +300,8 @@ services:
       observability:
         condition: service_started
       api:
+        condition: service_started
+      newsletter:
         condition: service_started
 
   runner:

@@ -162,6 +162,7 @@ def create_app(settings: ConsoleSettings) -> FastAPI:
                 settings.api,
                 settings.tempo,
                 fronts=settings.fronts,
+                apis=settings.apis,
             ),
             TEMPLATES,
         )

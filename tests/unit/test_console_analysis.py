@@ -21,33 +21,48 @@ from quality_console.designs import load_designs, mermaid, parse_design
 from quality_console.docs_files import load_docs
 from quality_console.footprint import (
     AMBIGUOUS,
+    CALLED_AGAIN,
     COLLEAGUE_TABLES,
     COMPANY_TABLES,
     LOOPING_TABLES,
+    ORPHAN,
+    OWNED,
     PAUSE_SECONDS,
     RUNS,
     RUNS_PART,
     RUNS_PER_BATCH,
+    SAME_CALL,
+    SAME_QUERY,
+    SEVERAL_CALLERS,
+    SEVERAL_QUERIES,
+    SEVERAL_SERVICES,
     SKIPPED,
     STOREFRONT,
     TARGETS,
+    TEST_OWN,
     ApiCall,
+    ApiHit,
     Experiment,
     FrontVisit,
     PathNode,
     Run,
+    SpanAccess,
     StepSeen,
     TableHits,
     TracedAccess,
+    api_hints,
     colleague_tables,
     demo_run,
     looping_colleague,
     merge_windows,
     narrow,
+    optimization_hints,
     pick_trace,
+    span_accesses,
     span_count,
     tables_in_statement,
     touched,
+    trace_api_hits,
     trace_id_of,
     trace_path,
     traced_accesses,
@@ -313,6 +328,7 @@ def test_the_targets_cover_api_only_sql_only_and_both() -> None:
     assert kinds["hello-then-sql"] == ["api", "sql"]
     assert kinds["front-api"] == ["front", "api"]
     assert kinds["front-api-redirect"] == ["front", "api", "front"]
+    assert kinds["orphan-tables"] == ["api", "api"]
     hello = TARGETS["hello"].steps[0]
     assert isinstance(hello, ApiCall)
     assert hello.trace_query == (
@@ -691,6 +707,7 @@ def _finished(key: str) -> Experiment:
         experiment.runs.append(run)
     experiment.traced_steps = {n: s.path for n, s in enumerate(target.demo.steps)}
     experiment.traced = target.demo.accesses
+    experiment.spans = target.demo.spans
     experiment.window_state = "skipped"
     return experiment
 
@@ -892,3 +909,256 @@ def test_the_final_answer_says_who_sent_the_sql_of_each_table() -> None:
     assert details["products"] == f"SQL from the-test in {RUNS}/{RUNS} windows"
     assert details["stock_levels"] == "no SQL span in the run windows"
     assert experiment.to_json()["window"]["tables"][0]["table"] == "products"
+
+
+def _sql_span(service: str, team: str | None, statement: str) -> dict[str, object]:
+    """One batch of an OTLP trace: a service, its team if declared, one SQL span."""
+    resource = [{"key": "service.name", "value": {"stringValue": service}}]
+    if team:
+        resource.append({"key": "team", "value": {"stringValue": team}})
+    span = {
+        "name": "SELECT",
+        "attributes": [
+            {"key": "db.system", "value": {"stringValue": "mysql"}},
+            {"key": "db.name", "value": {"stringValue": "mycompany"}},
+            {"key": "db.statement", "value": {"stringValue": statement}},
+        ],
+    }
+    return {"resource": {"attributes": resource}, "scopeSpans": [{"spans": [span]}]}
+
+
+def test_each_traced_access_carries_the_team_its_service_declares() -> None:
+    trace = {
+        "batches": [
+            _sql_span("hello-api", "storefront-squad", "SELECT 1 FROM customers"),
+            _sql_span("newsletter-service", None, "SELECT 1 FROM newsletters"),
+        ]
+    }
+
+    assert traced_accesses(trace) == [
+        TracedAccess("hello-api", "customers", "read", "storefront-squad"),
+        TracedAccess("newsletter-service", "newsletters", "read", ""),
+    ]
+
+
+def test_the_newsletter_call_is_searched_under_its_own_service() -> None:
+    newsletters = TARGETS["orphan-tables"].steps[1]
+
+    assert isinstance(newsletters, ApiCall)
+    assert newsletters.api == "newsletter"
+    assert newsletters.trace_query == (
+        '{ resource.service.name = "newsletter-service"'
+        ' && name = "GET /newsletters/ada" }'
+    )
+
+
+def _orphan_run() -> Experiment:
+    """The orphan tables test run to its end: hello-api declared, newsletters not."""
+    tables = [
+        "customers",
+        "bank_accounts",
+        "customer_preferences",
+        "newsletter_subscriptions",
+        "newsletters",
+    ]
+    experiment = Experiment("x", TARGETS["orphan-tables"])
+    experiment.runs = [
+        Run(n, 900, [TableHits(t, 1, 0) for t in tables], [], tables, [])
+        for n in range(1, RUNS + 1)
+    ]
+    hello = [
+        TracedAccess("hello-api", "customers", "read", "storefront-squad"),
+        TracedAccess("bank-partner", "bank_accounts", "read", "partners-squad"),
+    ]
+    newsletters = [
+        TracedAccess("newsletter-service", "customers", "read"),
+        TracedAccess("newsletter-service", "customer_preferences", "read"),
+        TracedAccess("newsletter-service", "newsletter_subscriptions", "read"),
+    ]
+    experiment.traced = hello + newsletters
+    experiment.traced_steps = {
+        0: [PathNode("api", "GET /api/hello", "hello-api")]
+        + [PathNode("table", a.table, a.service, a.operation) for a in hello],
+        1: [PathNode("api", "GET /newsletters/{username}", "newsletter-service")]
+        + [PathNode("table", a.table, a.service, a.operation) for a in newsletters],
+    }
+    experiment.window_state = "skipped"
+    return experiment
+
+
+def test_a_table_no_declared_team_names_is_an_orphan() -> None:
+    ownership = {o["table"]: o for o in _orphan_run().ownership}
+
+    assert ownership["customers"]["status"] == OWNED
+    assert ownership["customers"]["teams"] == ["storefront-squad"]
+    assert ownership["bank_accounts"]["teams"] == ["partners-squad"]
+    assert ownership["customer_preferences"]["status"] == ORPHAN
+    assert "newsletter-service" in ownership["customer_preferences"]["why"]
+    assert ownership["newsletters"]["status"] == ORPHAN
+    assert ownership["newsletters"]["why"] == (
+        "counted by the database, no span names it"
+    )
+    assert [o["status"] for o in _orphan_run().to_json()["ownership"]][:3] == [
+        ORPHAN
+    ] * 3
+
+
+def test_ownership_waits_for_the_final_answer_and_needs_a_trace() -> None:
+    early = Experiment("x", TARGETS["orphan-tables"])
+    sql_only = Experiment("x", TARGETS["sql-only"])
+    sql_only.runs = [
+        Run(n, 900, [TableHits("products", 1, 0)], [], ["products"], [])
+        for n in range(1, RUNS + 1)
+    ]
+    sql_only.window_state = "skipped"
+
+    assert early.ownership == []
+    assert sql_only.final != []
+    assert sql_only.ownership == []
+
+
+def test_a_simulated_trigger_writes_an_orphan_table() -> None:
+    ownership = {o["table"]: o["status"] for o in _finished("demo-wide").ownership}
+
+    assert ownership["audit_logs"] == ORPHAN
+    assert {s for t, s in ownership.items() if t != "audit_logs"} == {OWNED}
+    assert TEST_OWN not in ownership.values()
+
+
+CUSTOMER = "SELECT id FROM customers WHERE username = %s"
+"""A read of ``customers`` some services repeat."""
+
+
+def test_a_table_read_by_several_services_could_be_read_once() -> None:
+    spans = [
+        SpanAccess(0, "hello-api", "customers", "read", CUSTOMER),
+        SpanAccess(0, "bank-partner", "customers", "read", CUSTOMER),
+        SpanAccess(1, "newsletter-service", "customers", "read", CUSTOMER),
+        SpanAccess(1, "newsletter-service", "newsletters", "read", "SELECT"),
+    ]
+
+    [hint] = optimization_hints(spans)
+
+    assert (hint.item, hint.kind, hint.reads, hint.saved) == (
+        "customers",
+        SEVERAL_SERVICES,
+        3,
+        2,
+    )
+    assert hint.services == ["hello-api", "bank-partner", "newsletter-service"]
+    assert hint.steps == [0, 1]
+    assert hint.by[-1] == (1, "newsletter-service")
+
+
+def test_the_same_query_again_in_one_step_comes_first() -> None:
+    spans = [
+        SpanAccess(0, "order-worker", "orders", "read", "SELECT * FROM orders"),
+        SpanAccess(0, "order-worker", "orders", "read", "SELECT * FROM orders"),
+        SpanAccess(0, "order-worker", "orders", "read", "SELECT * FROM orders"),
+        SpanAccess(0, "order-worker", "products", "read", "SELECT a FROM products"),
+        SpanAccess(0, "order-worker", "products", "read", "SELECT b FROM products"),
+        SpanAccess(0, "order-worker", "payments", "write", "INSERT INTO payments"),
+        SpanAccess(0, "order-worker", "payments", "write", "INSERT INTO payments"),
+    ]
+
+    hints = optimization_hints(spans)
+
+    assert [(h.item, h.kind) for h in hints] == [
+        ("orders", SAME_QUERY),
+        ("products", SEVERAL_QUERIES),
+    ]
+
+
+def test_a_trace_gives_one_span_access_per_sql_span() -> None:
+    trace = {
+        "batches": [
+            _sql_span("hello-api", "storefront-squad", CUSTOMER),
+            _sql_span("bank-partner", "partners-squad", CUSTOMER),
+        ]
+    }
+
+    assert span_accesses(trace, 2) == [
+        SpanAccess(2, "hello-api", "customers", "read", CUSTOMER),
+        SpanAccess(2, "bank-partner", "customers", "read", CUSTOMER),
+    ]
+
+
+def test_the_hints_wait_for_the_traces_and_count_the_test_s_own_sql() -> None:
+    experiment = Experiment("x", TARGETS["hello-then-sql"])
+    experiment.spans = [SpanAccess(0, "hello-api", "customers", "read", CUSTOMER)]
+    experiment.runs = [Run(n, 900, [], [], [], []) for n in range(1, RUNS + 1)]
+
+    assert experiment.hints == []
+
+    experiment.traced_steps = {0: []}
+    [hint] = experiment.hints
+    assert hint.services == ["hello-api", "the test"]
+    assert experiment.to_json()["hints"][0]["saved"] == 1
+
+
+def test_the_crowded_demo_has_tables_to_spare() -> None:
+    assert _finished("demo-crowded").hints != []
+
+
+def test_an_endpoint_called_again_is_an_api_to_spare() -> None:
+    hits = [
+        ApiHit(0, "hello-api", "GET /api/hello", "the test"),
+        ApiHit(0, "bank-partner", "GET /balance", "hello-api"),
+        ApiHit(1, "hello-api", "GET /api/hello", "the test"),
+        ApiHit(1, "bank-partner", "GET /balance", "hello-api"),
+        ApiHit(1, "bank-partner", "GET /balance", "newsletter-service"),
+        ApiHit(1, "stock", "GET /stock", "order-worker"),
+        ApiHit(1, "stock", "GET /stock", "order-worker"),
+        ApiHit(1, "identity-service", "GET /me", "hello-api"),
+    ]
+
+    hints = {(h.owner, h.item): h for h in api_hints(hits)}
+
+    assert hints["bank-partner", "GET /balance"].kind == SEVERAL_CALLERS
+    assert hints["bank-partner", "GET /balance"].saved == 2
+    assert hints["hello-api", "GET /api/hello"].kind == CALLED_AGAIN
+    assert hints["stock", "GET /stock"].kind == SAME_CALL
+    assert ("identity-service", "GET /me") not in hints
+    assert {h.of for h in hints.values()} == {"api"}
+
+
+def test_a_server_span_is_called_by_the_service_of_its_parent() -> None:
+    def batch(service: str, spans: list[dict[str, object]]) -> dict[str, object]:
+        resource = [{"key": "service.name", "value": {"stringValue": service}}]
+        return {"resource": {"attributes": resource}, "scopeSpans": [{"spans": spans}]}
+
+    trace = {
+        "batches": [
+            batch("quality-console", [{"spanId": "a", "kind": 3, "name": "GET"}]),
+            batch(
+                "hello-api",
+                [
+                    {"spanId": "b", "parentSpanId": "a", "kind": 2, "name": "GET /hi"},
+                    {"spanId": "c", "parentSpanId": "b", "kind": 3, "name": "GET"},
+                ],
+            ),
+            batch(
+                "bank-partner",
+                [{"spanId": "d", "parentSpanId": "c", "kind": 2, "name": "GET /b"}],
+            ),
+        ]
+    }
+
+    assert trace_api_hits(trace, 1) == [
+        ApiHit(1, "hello-api", "GET /hi", "the test"),
+        ApiHit(1, "bank-partner", "GET /b", "hello-api"),
+    ]
+
+
+def test_the_same_greeting_twice_is_a_real_run_of_its_own() -> None:
+    assert [s.title for s in TARGETS["repeat-hello"].steps] == [
+        "GET /api/hello?username=ada"
+    ] * 2
+
+
+def test_the_hints_list_the_endpoints_before_the_tables() -> None:
+    experiment = _finished("demo-crowded")
+    kinds = [h.of for h in experiment.hints]
+
+    assert kinds == sorted(kinds)
+    assert experiment.to_json()["hints"][0]["of"] == kinds[0]
