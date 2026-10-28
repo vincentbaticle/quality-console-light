@@ -23,7 +23,7 @@ the calls live in ``footprint_lab``.
 """
 
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 import random
 import re
@@ -148,6 +148,20 @@ SEVERAL_CALLERS = "several-callers"
 
 CALLED_AGAIN = "called-again"
 """Optimization hint: one caller calls the same endpoint again in a later step."""
+
+PUBLISHED_AGAIN = "published-again"
+"""Optimization hint: one service publishes to the same destination again."""
+
+CONSUMED_AGAIN = "consumed-again"
+"""Optimization hint: one service consumes from the same destination again."""
+
+MESSAGE_KINDS = {
+    "SPAN_KIND_PRODUCER": "publish",
+    4: "publish",
+    "SPAN_KIND_CONSUMER": "consume",
+    5: "consume",
+}
+"""Span kinds of a message: a producer publishes it, a consumer takes it."""
 
 
 ENTRY_KINDS = {
@@ -322,7 +336,7 @@ class Demo:
             if isinstance(step.step, ApiCall):
                 hits.append(ApiHit(index, DEMO_SERVICE, step.step.title, THE_TEST))
             hits += [
-                ApiHit(index, service, route, step.service)
+                ApiHit(index, service, route, step.service, DEMO_TEAM)
                 for service, route in step.behind
             ]
         return hits
@@ -765,6 +779,7 @@ class SpanAccess:
         table: The table.
         operation: ``read`` or ``write``.
         statement: The SQL statement, empty when unknown (simulated).
+        team: The team the service declares in its telemetry, empty when none.
     """
 
     step: int
@@ -772,24 +787,30 @@ class SpanAccess:
     table: str
     operation: str
     statement: str = ""
+    team: str = ""
 
 
 @dataclass(frozen=True)
 class Hint:
-    """A table read, or an endpoint called, more than once, and how once could do.
+    """A table, an endpoint or a message destination used more than once.
+
+    Each hint also says how doing it once could do.
 
     Attributes:
         item: The table, or the endpoint's route.
         kind: ``same-query``, ``several-services`` or ``several-queries`` for
             a table; ``same-call``, ``several-callers`` or ``called-again`` for
-            an endpoint.
+            an endpoint; ``published-again`` or ``consumed-again`` for a message
+            destination.
         reads: How many times it was read or called during the test.
         services: Who read or called it, in the order they first did.
         steps: The steps it was used during, in order.
         advice: What to change, in one sentence.
         by: Each use in order, as ``(step, service)``.
-        of: ``table`` or ``api``.
-        owner: For an endpoint, the service answering it.
+        of: ``table``, ``api`` or ``broker``.
+        owner: For an endpoint, the service answering it; for a destination,
+            the one publishing or consuming.
+        teams: The teams the services using it declare, empty when none does.
     """
 
     item: str
@@ -801,6 +822,7 @@ class Hint:
     by: list[tuple[int, str]] = field(default_factory=list)
     of: str = "table"
     owner: str = ""
+    teams: list[str] = field(default_factory=list)
 
     @property
     def saved(self) -> int:
@@ -817,12 +839,39 @@ class ApiHit:
         service: The service answering.
         route: The endpoint, as its server span names it.
         caller: The service whose call it answers, or ``the test``.
+        team: The team the answering service declares, empty when none.
     """
 
     step: int
     service: str
     route: str
     caller: str
+    team: str = ""
+
+
+@dataclass(frozen=True)
+class MessageHit:
+    """One message a service published or consumed during the test.
+
+    Attributes:
+        step: Index of the test's step the message went by during.
+        service: The service publishing or consuming it.
+        destination: The queue, topic or exchange; the span's name when the
+            span names none.
+        operation: ``publish`` or ``consume``.
+        team: The team the service declares, empty when none.
+    """
+
+    step: int
+    service: str
+    destination: str
+    operation: str
+    team: str = ""
+
+
+def _teams(teams: Iterable[str]) -> list[str]:
+    """The declared teams, each once, sorted."""
+    return sorted({team for team in teams if team})
 
 
 def api_hints(hits: list[ApiHit]) -> list[Hint]:
@@ -866,8 +915,74 @@ def api_hints(hits: list[ApiHit]) -> list[Hint]:
                 " first answer (or caching it) would spare the call."
             )
         by = [(h.step, h.caller) for h in calls]
+        teams = _teams(h.team for h in calls)
         hints.append(
-            Hint(route, kind, len(calls), callers, steps, advice, by, "api", service)
+            Hint(
+                route,
+                kind,
+                len(calls),
+                callers,
+                steps,
+                advice,
+                by,
+                "api",
+                service,
+                teams,
+            )
+        )
+    return sorted(hints, key=lambda hint: -hint.reads)
+
+
+def message_hints(hits: list[MessageHit]) -> list[Hint]:
+    """Find the destinations one service publishes to or consumes from more than once.
+
+    Several messages to the same destination for one test could be one
+    message carrying everything; several taken from it, one batch.
+
+    Args:
+        hits: Every message published or consumed during the test, in order.
+
+    Returns:
+        One hint per service, direction and destination used more than once,
+        the most messages first.
+    """
+    hints = []
+    keys = dict.fromkeys((h.service, h.operation, h.destination) for h in hits)
+    for service, operation, destination in keys:
+        sent = [
+            h
+            for h in hits
+            if (h.service, h.operation, h.destination)
+            == (service, operation, destination)
+        ]
+        if len(sent) <= 1:
+            continue
+        if operation == "publish":
+            kind = PUBLISHED_AGAIN
+            advice = (
+                f"{service} publishes {len(sent)} messages to {destination}: one"
+                " message carrying everything would do."
+            )
+        else:
+            kind = CONSUMED_AGAIN
+            advice = (
+                f"{service} consumes {len(sent)} messages from {destination}: one"
+                " message, or a consumer taking them as a batch, would do."
+            )
+        steps = list(dict.fromkeys(h.step for h in sent))
+        hints.append(
+            Hint(
+                destination,
+                kind,
+                len(sent),
+                [service],
+                steps,
+                advice,
+                [(h.step, service) for h in sent],
+                "broker",
+                service,
+                _teams(h.team for h in sent),
+            )
         )
     return sorted(hints, key=lambda hint: -hint.reads)
 
@@ -918,8 +1033,30 @@ def optimization_hints(spans: list[SpanAccess]) -> list[Hint]:
                 " keeping what the first one returned, would do."
             )
         by = [(s.step, s.service) for s in reads]
-        hints.append(Hint(table, kind, len(reads), services, steps, advice, by))
+        teams = _teams(s.team for s in reads)
+        hints.append(
+            Hint(table, kind, len(reads), services, steps, advice, by, teams=teams)
+        )
     return sorted(hints, key=lambda hint: -hint.reads)
+
+
+_VERBS = {"publish": "published", "consume": "consumed"}
+"""How an ownership entry tells a destination's use."""
+
+
+def _owned(
+    of: str, item: str, hits: list[ApiHit] | list[MessageHit], details: list[str]
+) -> dict[str, Any]:
+    """One API or destination, owned by the teams its services declare."""
+    teams = _teams(hit.team for hit in hits)
+    why = ", ".join(details)
+    return {
+        "of": of,
+        "item": item,
+        "status": OWNED if teams else ORPHAN,
+        "teams": teams,
+        "why": why if teams else f"{why}, no team declared",
+    }
 
 
 @dataclass(frozen=True)
@@ -970,6 +1107,7 @@ class Run:
     steps: list[StepSeen] = field(default_factory=list)
     started_ns: int = 0
     ended_ns: int = 0
+    trace_ids: list[str] = field(default_factory=list)
 
     @property
     def batch(self) -> int:
@@ -992,19 +1130,28 @@ class WindowTable:
     services: list[str]
 
 
-def window_tables(search: Mapping[str, Any]) -> dict[str, set[str]]:
+def window_tables(
+    search: Mapping[str, Any], others: Collection[str] = ()
+) -> dict[str, set[str]]:
     """Read one run window's search in Tempo: the tables, each with its services.
 
     Args:
         search: The JSON of ``/api/search`` with ``WINDOW_QUERY``, whose spans
             carry ``db.statement`` and the ``service.name`` that sent them; the
             root service of the trace stands in when a span has none.
+        others: The traces the test's calls started in the other runs. Runs
+            follow each other closer than the window's slack, so a window
+            also catches the neighbouring runs' calls: those traces are left
+            out, and each window holds its own run of the test, plus whoever
+            else queried meanwhile.
 
     Returns:
         By table, the services whose traces held a SQL span on it.
     """
     seen: dict[str, set[str]] = {}
     for trace in search.get("traces", []):
+        if trace.get("traceID") in others:
+            continue
         root = trace.get("rootServiceName") or "unknown"
         for span_set in trace.get("spanSets", []) or [trace.get("spanSet", {})]:
             for span in span_set.get("spans", []):
@@ -1058,6 +1205,7 @@ class Experiment:
     traced_steps: dict[int, list[PathNode]] = field(default_factory=dict)
     spans: list[SpanAccess] = field(default_factory=list)
     api_hits: list[ApiHit] = field(default_factory=list)
+    message_hits: list[MessageHit] = field(default_factory=list)
     looping: list[str] = field(default_factory=list)
     trace_waited: float = 0.0
     trace_timeout: float = 1.0
@@ -1327,12 +1475,52 @@ class Experiment:
         return sorted(entries, key=lambda entry: entry["status"] != ORPHAN)
 
     @property
-    def hints(self) -> list[Hint]:
-        """Where the test calls an endpoint or reads a table more than once.
+    def service_ownership(self) -> list[dict[str, Any]]:
+        """Which team owns each API and each message destination of the traces.
 
-        The endpoints first, then the tables: the server spans of the traces,
-        the SQL spans, and the test's own SQL as spans of ``the test``, in the
-        order of the steps. Empty until the runs are over and the traces read.
+        An API is owned when its service declares a team, so the platform
+        files its server spans under it; a destination when the services
+        publishing to it or consuming from it do. Otherwise an orphan:
+        searching by team never finds it.
+
+        Returns:
+            The APIs then the destinations, each with ``of``, ``item``,
+            ``status``, ``teams`` and ``why``, orphans first within each;
+            empty until the final answer is ready or when no trace was read.
+        """
+        if not self.final or not self.traced:
+            return []
+        apis: dict[str, list[ApiHit]] = {}
+        for hit in self.api_hits:
+            apis.setdefault(hit.service, []).append(hit)
+        brokers: dict[str, list[MessageHit]] = {}
+        for message in self.message_hits:
+            brokers.setdefault(message.destination, []).append(message)
+        entries = [
+            _owned("api", service, hits, sorted({h.route for h in hits}))
+            for service, hits in apis.items()
+        ] + [
+            _owned(
+                "broker",
+                destination,
+                hits,
+                sorted({f"{_VERBS[h.operation]} by {h.service}" for h in hits}),
+            )
+            for destination, hits in brokers.items()
+        ]
+        return sorted(
+            entries,
+            key=lambda e: (e["of"] != "api", e["status"] != ORPHAN, e["item"]),
+        )
+
+    @property
+    def hints(self) -> list[Hint]:
+        """Where the test calls, sends or reads something more than once.
+
+        The endpoints first, then the messages, then the tables: the server,
+        producer, consumer and SQL spans of the traces, and the test's own SQL
+        as spans of ``the test``, in the order of the steps. Empty until the
+        runs are over and the traces read.
         """
         if len(self.runs) < RUNS or not self.checked:
             return []
@@ -1343,8 +1531,11 @@ class Experiment:
             if isinstance(step, SqlQuery)
             for table, operation in tables_in_statement(step.statement)
         ]
-        return apis + optimization_hints(
-            sorted(self.spans + own, key=lambda span: span.step)
+        messages = message_hints(sorted(self.message_hits, key=lambda h: h.step))
+        return (
+            apis
+            + messages
+            + optimization_hints(sorted(self.spans + own, key=lambda span: span.step))
         )
 
     def window_detail(self, table: str) -> str:
@@ -1413,6 +1604,7 @@ class Experiment:
             "path": [vars(node) for node in self.path],
             "final": self.final,
             "ownership": self.ownership,
+            "service_ownership": self.service_ownership,
             "hints": [{**vars(hint), "saved": hint.saved} for hint in self.hints],
             "window": {
                 "state": self.window_state,
@@ -1678,8 +1870,9 @@ def span_accesses(trace: Mapping[str, Any], step: int) -> list[SpanAccess]:
             table,
             operation,
             _attribute(span.get("attributes", []), "db.statement") or "",
+            team,
         )
-        for service, _, span in _spans(trace)
+        for service, team, span in _spans(trace)
         for table, operation in _span_tables(span)
     ]
 
@@ -1701,13 +1894,42 @@ def trace_api_hits(trace: Mapping[str, Any], step: int) -> list[ApiHit]:
     spans = _spans(trace)
     owners = {span.get("spanId"): service for service, _, span in spans}
     hits = []
-    for service, _, span in spans:
+    for service, team, span in spans:
         if ENTRY_KINDS.get(span.get("kind", "")) != "api":
             continue
         caller = owners.get(span.get("parentSpanId"), THE_TEST)
         if caller == LAB_SERVICE:
             caller = THE_TEST
-        hits.append(ApiHit(step, service, span.get("name", ""), caller))
+        hits.append(ApiHit(step, service, span.get("name", ""), caller, team))
+    return hits
+
+
+def trace_message_hits(trace: Mapping[str, Any], step: int) -> list[MessageHit]:
+    """List every message a trace's services published or consumed, in order.
+
+    A producer span publishes a message, a consumer span takes one. The
+    destination is the ``messaging.destination.name`` attribute (or the older
+    ``messaging.destination``), the span's name when it has neither.
+
+    Args:
+        trace: The JSON of Tempo's ``/api/traces/<id>``, OTLP batches.
+        step: Index of the test's step the trace belongs to.
+
+    Returns:
+        One hit per producer or consumer span.
+    """
+    hits = []
+    for service, team, span in _spans(trace):
+        operation = MESSAGE_KINDS.get(span.get("kind", ""))
+        if operation is None:
+            continue
+        attributes = span.get("attributes", [])
+        destination = (
+            _attribute(attributes, "messaging.destination.name")
+            or _attribute(attributes, "messaging.destination")
+            or span.get("name", "")
+        )
+        hits.append(MessageHit(step, service, destination, operation, team))
     return hits
 
 

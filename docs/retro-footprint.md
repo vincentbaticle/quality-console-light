@@ -42,8 +42,8 @@ Two fronts play the parts of a company's intranet and of its developer portal (a
 The page puts its three answers first, each in its own numbered card, linked from a strip under the progress bar:
 
 1. **Path of the test**: every front, API and table the test goes through, in order, the traces and the database's count merged.
-2. **Ownership**: which team owns each table in Grafana, and the orphans.
-3. **Resource optimization**: the endpoints called and the tables read more than once, where once would do.
+2. **Ownership**: which team owns each table, API and message broker in Grafana, and the orphans.
+3. **Resource optimization**: the endpoints called, the messages published or consumed and the tables read more than once, with the team owning each, where once would do.
 
 ## What one click on Run does
 
@@ -71,7 +71,7 @@ Five more runs right away would not do it: they would still fall inside the coll
 
 ## A third witness: the SQL spans of each run window
 
-The traces of run 1 name what the test's own services did. Once the runs are over, Tempo is also asked, run window by run window (`WINDOW_QUERY`, `{ span.db.system = "mysql" && span.db.name = "mycompany" } | select(span.db.statement)`, between the run's start and end with a second of slack), for every SQL span on the company database, whoever sent it: the colleagues' queries included, since the console that plays them is instrumented too. Each table it names comes with the services of those spans and the number of windows it showed up in.
+The traces of run 1 name what the test's own services did. Once the runs are over, Tempo is also asked, run window by run window (`WINDOW_QUERY`, `{ span.db.system = "mysql" && span.db.name = "mycompany" } | select(span.db.statement)`, between the run's start and end with a second of slack), for every SQL span on the company database, whoever sent it: the colleagues' queries included, since the console that plays them is instrumented too. Each table it names comes with the services of those spans and the number of windows it showed up in. The runs follow each other closer than that second of slack, so a window also catches the calls of the runs on either side: the trace of every call the test starts is kept with its run, and a window leaves out the traces of the other runs' calls. Each window then holds its own run of the test exactly, plus whoever else queried meanwhile; time alone can't tell runs a fraction of a second apart, the trace id can.
 
 Matched with the database count, it says **who** touched each table: the final answer writes it under each table (`SQL from hello-api in 10/10 windows`, or `no SQL span in the run windows` for a table touched by something that sends none). Tempo takes a few seconds to hold a span, so the lab waits 5 seconds after the last run before reading the windows; the page says so, and the final answer waits for them.
 
@@ -109,25 +109,27 @@ A query of the test itself needs no trace: its statement, in the test's code, na
 - **Fronts, APIs and tables used so far**: the fronts ("opened by the test" or "after a redirect"), the APIs ("called by the test" or "in the trace"), each with the number of runs its step was played in (`7/10 runs`: a step skipped in some runs, a branch), then only the tables some run saw, not the 30. Black, still candidate, numbered in the order the last run touched them; light grey, ruled out; outlined, confirmed by the trace. Each table says it under its name, with how the runs used it (`read`, `write` or `read + write`) and in how many runs the database saw it (`4/5 runs`): one run missing is enough to rule a table out. Each table tagged `live` (the storefront writes it) or `static`.
 - **Run details**, folded by default: one tab per run, the pause between the two batches: the steps with their outcome (`HTTP 200`, `2 rows`) and the tables each moved, the colleagues' tables (the looping colleague in blue), every table seen with its reads and writes, what the run ruled out. The **Coverage check** tab opens when the runs end: the answer's accesses (service, table, read or write) beside the tables the database saw in every run, and the check's result.
 
-## Ownership: orphan tables, invisible in Grafana by team
+## Ownership: orphan tables, APIs and destinations, invisible in Grafana by team
 
 An observability platform files telemetry under a team when the service says which one: here a `team` resource attribute, set with the standard `OTEL_RESOURCE_ATTRIBUTES` variable of the [OpenTelemetry SDK configuration](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/) (`team=storefront-squad`). Every span of the service carries it, so each SQL span says which team touched which table. A team that forgets the line still sends spans, but nobody owns them: searching by team never finds its tables.
 
 `docker-compose.yml` declares the team of each service from `catalog/catalog.yaml` (`hello-api`, `order-worker`, `identity-service`, `bank-partner`, `quality-console`), except one: the **newsletter service** (`src/newsletter/`, service `newsletter`), owned by the storefront squad in the catalog, deployed without its `team`, a forgotten declaration.
 
-Once the final answer is ready, the **Ownership** card puts each of its tables in one group:
+Once the final answer is ready, the **Ownership** card shows three groups, tables, APIs and message brokers, each counting how many are owned. An owned tile is green, with its team in a green badge. A table is in one of these states:
 
-- **owned**: a span of the test's traces naming the table comes from a service declaring a team; the team is shown, and so is the TraceQL query a team runs in Grafana to find its tables (`{ resource.team = "storefront-squad" && span.db.name = "mycompany" }`);
+- **owned**: a span of the test's traces naming the table comes from a service declaring a team; the team is shown, and so is the TraceQL query a team runs in Grafana to find what it owns (`{ resource.team = "storefront-squad" }`);
 - **orphan**, in red with a banner: the database counted it in every run, but no span of a declared team names it. Either its spans come from services declaring no team (`spans of newsletter-service, no team declared`), or there is no span at all (`counted by the database, no span names it`: a trigger, an untraced service);
 - **the test's own SQL**: named only by a query of the test, no service to own it.
+
+An **API** is owned when the service answering it declares a team, so its server spans are filed under it; the tile lists the routes the test called (`service_ownership`). A **message destination** (a queue, a topic, an exchange) is owned when the services publishing to it or consuming from it declare one; the tile says who published and who consumed. Neither has a database count behind it: both come from the spans of the traces only.
 
 Likely colleagues are left out. The final path marks each orphan table too. Without a trace (Tempo unreachable, a test of SQL only), ownership stays unknown: the teams are only in the spans.
 
 The test *Ownership: GET /api/hello, then a service whose team forgot to declare it* shows it for real: `customers` (the storefront API and the bank partner) and `bank_accounts` are owned, the 3 tables only the newsletter service reads are orphans. In Grafana, `{ resource.service.name = "newsletter-service" && resource.team != nil }` finds nothing. The simulated *many of a kind* shows the other cause: `audit_logs`, written by a trigger nobody traces.
 
-## Resource optimization: endpoints and tables used more than once
+## Resource optimization: endpoints, messages and tables used more than once
 
-Each server span is one call to an endpoint, each SQL span reading a table one query on the database. Once the traces are read, both are counted one by one, endpoints first.
+Each server span is one call to an endpoint, each producer or consumer span one message, each SQL span reading a table one query on the database. Once the traces are read, all three are counted one by one: endpoints, then messages, then tables. Each item shows the team of the services using it in a green badge, or *no team*, so the card says who to ask.
 
 **Endpoints.** `trace_api_hits` lists every server span with the service that called it (the service of its parent span; a call from the console's lab, or from outside the trace, is the test's). `api_hints` lists each endpoint called more than once:
 
@@ -136,6 +138,8 @@ Each server span is one call to an endpoint, each SQL span reading a table one q
 - **called again later**: one caller calls it again in a later step: keep the first answer, or cache it.
 
 The test *Resource optimization: GET /api/hello, then the same greeting again* shows it for real: `GET /api/hello` called twice by the test, `GET /balance` of the bank partner twice by the storefront API, `customers` read 4 times and `bank_accounts` twice: 2 calls and 4 queries to spare.
+
+**Messages.** `trace_message_hits` lists every producer span (a message published) and consumer span (a message taken), with its destination: the `messaging.destination.name` attribute of the [OpenTelemetry messaging conventions](https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/), the span's name when it has none. `message_hints` lists each destination one service publishes to, or consumes from, more than once: **published again** (one message carrying everything would do) or **consumed again** (one message, or a batch).
 
 **Tables.** Each SQL span reading a table is one query on the database. Once the traces are read, every SQL span of the test is kept one by one (`span_accesses`, nothing merged), with the step it ran during; the test's own SQL counts as spans of `the test`. `optimization_hints` lists each table read more than once, with what to change, the strongest case first:
 

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import random
 import re
+from typing import Any, cast
 
 from fastapi import FastAPI
 from fastapi.templating import Jinja2Templates
@@ -44,6 +45,7 @@ from quality_console.footprint import (
     ApiHit,
     Experiment,
     FrontVisit,
+    MessageHit,
     PathNode,
     Run,
     SpanAccess,
@@ -55,6 +57,7 @@ from quality_console.footprint import (
     demo_run,
     looping_colleague,
     merge_windows,
+    message_hints,
     narrow,
     optimization_hints,
     pick_trace,
@@ -64,6 +67,7 @@ from quality_console.footprint import (
     touched,
     trace_api_hits,
     trace_id_of,
+    trace_message_hits,
     trace_path,
     traced_accesses,
     window_tables,
@@ -886,6 +890,21 @@ def test_a_run_window_names_each_table_with_the_services_that_sent_its_sql() -> 
     ]
 
 
+def test_a_run_window_leaves_out_the_test_calls_of_the_other_runs() -> None:
+    traces = cast(list[dict[str, Any]], WINDOW_SEARCH["traces"])
+    search = {
+        "traces": [
+            {**traces[0], "traceID": "run-2-call"},
+            {**traces[1], "traceID": "colleague"},
+        ]
+    }
+
+    assert window_tables(search, others={"run-2-call"}) == {
+        "reviews": {"quality-console"}
+    }
+    assert window_tables(search) == window_tables(WINDOW_SEARCH)
+
+
 def test_the_final_answer_says_who_sent_the_sql_of_each_table() -> None:
     experiment = Experiment("x", TARGETS["sql-only"])
     experiment.runs = [
@@ -1078,8 +1097,8 @@ def test_a_trace_gives_one_span_access_per_sql_span() -> None:
     }
 
     assert span_accesses(trace, 2) == [
-        SpanAccess(2, "hello-api", "customers", "read", CUSTOMER),
-        SpanAccess(2, "bank-partner", "customers", "read", CUSTOMER),
+        SpanAccess(2, "hello-api", "customers", "read", CUSTOMER, "storefront-squad"),
+        SpanAccess(2, "bank-partner", "customers", "read", CUSTOMER, "partners-squad"),
     ]
 
 
@@ -1162,3 +1181,107 @@ def test_the_hints_list_the_endpoints_before_the_tables() -> None:
 
     assert kinds == sorted(kinds)
     assert experiment.to_json()["hints"][0]["of"] == kinds[0]
+
+
+def test_an_api_or_a_destination_is_owned_by_the_team_its_services_declare() -> None:
+    experiment = _orphan_run()
+    experiment.api_hits = [
+        ApiHit(0, "hello-api", "GET /api/hello", "the test", "storefront-squad"),
+        ApiHit(1, "newsletter-service", "GET /newsletters/{username}", "the test"),
+    ]
+    experiment.message_hits = [
+        MessageHit(0, "hello-api", "order-workflow", "publish", "storefront-squad"),
+        MessageHit(0, "order-worker", "order-workflow", "consume", "orders-squad"),
+        MessageHit(1, "newsletter-service", "newsletters", "publish"),
+    ]
+
+    entries = {(e["of"], e["item"]): e for e in experiment.service_ownership}
+
+    assert entries["api", "hello-api"]["status"] == OWNED
+    assert entries["api", "hello-api"]["teams"] == ["storefront-squad"]
+    assert entries["api", "newsletter-service"]["status"] == ORPHAN
+    assert entries["api", "newsletter-service"]["why"] == (
+        "GET /newsletters/{username}, no team declared"
+    )
+    assert entries["broker", "order-workflow"]["teams"] == [
+        "orders-squad",
+        "storefront-squad",
+    ]
+    assert entries["broker", "order-workflow"]["why"] == (
+        "consumed by order-worker, published by hello-api"
+    )
+    assert entries["broker", "newsletters"]["status"] == ORPHAN
+    assert [e["of"] for e in experiment.to_json()["service_ownership"]] == [
+        "api",
+        "api",
+        "broker",
+        "broker",
+    ]
+
+
+def test_a_destination_used_again_by_one_service_is_a_message_to_spare() -> None:
+    hits = [
+        MessageHit(0, "hello-api", "order-workflow", "publish", "storefront-squad"),
+        MessageHit(1, "hello-api", "order-workflow", "publish", "storefront-squad"),
+        MessageHit(1, "order-worker", "order-workflow", "consume"),
+    ]
+
+    [hint] = message_hints(hits)
+
+    assert (hint.of, hint.item, hint.owner) == ("broker", "order-workflow", "hello-api")
+    assert hint.kind == "published-again"
+    assert hint.saved == 1
+    assert hint.teams == ["storefront-squad"]
+
+
+def test_the_hints_carry_the_teams_of_the_services_using_each_item() -> None:
+    hits = [
+        ApiHit(0, "bank-partner", "GET /balance", "hello-api", "partners-squad"),
+        ApiHit(1, "bank-partner", "GET /balance", "hello-api", "partners-squad"),
+    ]
+    spans = [
+        SpanAccess(0, "hello-api", "customers", "read", CUSTOMER, "storefront-squad"),
+        SpanAccess(1, "newsletter-service", "customers", "read", CUSTOMER),
+    ]
+
+    assert api_hints(hits)[0].teams == ["partners-squad"]
+    assert optimization_hints(spans)[0].teams == ["storefront-squad"]
+
+
+def test_a_producer_or_consumer_span_is_a_message_of_its_destination() -> None:
+    def batch(service: str, spans: list[dict[str, object]]) -> dict[str, object]:
+        resource = [
+            {"key": "service.name", "value": {"stringValue": service}},
+            {"key": "team", "value": {"stringValue": "orders-squad"}},
+        ]
+        return {"resource": {"attributes": resource}, "scopeSpans": [{"spans": spans}]}
+
+    destination = [
+        {"key": "messaging.destination.name", "value": {"stringValue": "orders"}}
+    ]
+    trace = {
+        "batches": [
+            batch(
+                "order-worker",
+                [
+                    {
+                        "kind": "SPAN_KIND_PRODUCER",
+                        "name": "orders publish",
+                        "attributes": destination,
+                        "startTimeUnixNano": "1",
+                    },
+                    {"kind": 5, "name": "invoices process", "startTimeUnixNano": "2"},
+                    {
+                        "kind": "SPAN_KIND_SERVER",
+                        "name": "GET /orders",
+                        "startTimeUnixNano": "3",
+                    },
+                ],
+            )
+        ]
+    }
+
+    assert trace_message_hits(trace, 2) == [
+        MessageHit(2, "order-worker", "orders", "publish", "orders-squad"),
+        MessageHit(2, "order-worker", "invoices process", "consume", "orders-squad"),
+    ]

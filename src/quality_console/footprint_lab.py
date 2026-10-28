@@ -55,6 +55,7 @@ from quality_console.footprint import (
     touched,
     trace_api_hits,
     trace_id_of,
+    trace_message_hits,
     trace_path,
     traced_accesses,
     window_tables,
@@ -286,7 +287,13 @@ class FootprintLab:
                         "spss": 100,
                     },
                 )
-                per_run.append(window_tables(answer.raise_for_status().json()))
+                others = {
+                    trace_id
+                    for other in experiment.runs
+                    if other is not run
+                    for trace_id in other.trace_ids
+                }
+                per_run.append(window_tables(answer.raise_for_status().json(), others))
         except (httpx.HTTPError, ValueError) as error:
             experiment.window_state = "failed"
             experiment.window_phase = (
@@ -378,6 +385,7 @@ class FootprintLab:
             time.time_ns(),
         )
         calls = [call for _, call in played if call is not None]
+        run.trace_ids = [call.trace_id for call in calls if call.trace_id]
         return run, calls
 
     def _step(self, step: Step) -> tuple[StepSeen, StepCall | None]:
@@ -534,6 +542,7 @@ class FootprintLab:
                     experiment.traced_steps[index] = trace_path(trace)
                     experiment.spans += span_accesses(trace, index)
                     experiment.api_hits += trace_api_hits(trace, index)
+                    experiment.message_hits += trace_message_hits(trace, index)
             if experiment.checked:
                 experiment.trace_phase = "Trace read"
         except (httpx.HTTPError, ValueError) as error:
